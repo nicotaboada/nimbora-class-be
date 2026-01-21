@@ -6,6 +6,7 @@ import { PrismaService } from "./prisma/prisma.service";
 import { StudentsModule } from "./students/students.module";
 import { FeesModule } from "./fees/fees.module";
 import { ChargesModule } from "./charges/charges.module";
+import { InvoicesModule } from "./invoices/invoices.module";
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ChargesModule } from "./charges/charges.module";
     StudentsModule,
     FeesModule,
     ChargesModule,
+    InvoicesModule,
   ],
   providers: [PrismaService],
 })

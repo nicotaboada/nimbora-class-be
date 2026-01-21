@@ -78,3 +78,56 @@ Lógica implementada en `deleteFee`:
 
 Al editar un Fee (template), los cargos ya creados **mantienen su monto original**. El campo `amount` en Charge es un snapshot del `Fee.cost` al momento de la asignación.
 
+---
+
+## Invoice Module
+
+### Modelo conceptual
+
+```
+Fee (plantilla)
+  └── genera → Charge (deuda operativa, mes a mes)
+                 └── puede ser incluido en → Invoice (documento contable)
+                       └── a través de → InvoiceLine (snapshot contable)
+```
+
+### Tipos de InvoiceLine
+
+| Tipo | chargeId | Descripción | Monto |
+|------|----------|-------------|-------|
+| CHARGE | Requerido | Snapshot de Fee.description | Snapshot de Charge.amount |
+| MANUAL | null | Usuario ingresa (materiales, ajuste, etc.) | Usuario ingresa |
+
+### Estados de Invoice
+
+- `ISSUED` - Factura emitida (default al crear)
+- `PAID` - Todos los cargos pagados
+- `PARTIALLY_PAID` - Algunos cargos pagados (para pagos parciales futuros)
+- `VOID` - Anulada (soft delete, mantiene historial)
+
+### Reglas de negocio
+
+1. **Descuentos solo en InvoiceLine** - El `Charge.amount` nunca se modifica
+2. **isActive en InvoiceLine** - Flag técnico para unicidad vs histórico:
+   - `true` = línea activa (cuenta para validaciones)
+   - `false` = línea histórica (invoice anulada o línea removida)
+3. **Totales calculados en backend** - Ignorar valores del frontend
+4. **Recipient flexible** - `studentId` nullable para casos "OTHER"
+
+### Flujo de Charge.status con Invoice
+
+| Acción | Status Charge |
+|--------|---------------|
+| Crear InvoiceLine tipo CHARGE | PENDING → INVOICED |
+| VOID Invoice | INVOICED → PENDING |
+| Remove InvoiceLine | INVOICED → PENDING |
+
+### Índice parcial para unicidad
+
+Un Charge solo puede estar en UNA InvoiceLine activa:
+
+```sql
+CREATE UNIQUE INDEX uniq_active_charge_invoiceline 
+ON "InvoiceLine" ("chargeId") 
+WHERE "chargeId" IS NOT NULL AND "isActive" = true;
+```

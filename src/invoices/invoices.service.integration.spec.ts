@@ -955,8 +955,11 @@ describe("InvoicesService (Integration)", () => {
 
       const result = await service.findAll({ studentId: testStudentId });
 
-      expect(result.length).toBeGreaterThan(0);
-      expect(result.every((inv) => inv.studentId === testStudentId)).toBe(true);
+      expect(result.data.length).toBeGreaterThan(0);
+      expect(result.data.every((inv) => inv.studentId === testStudentId)).toBe(
+        true,
+      );
+      expect(result.meta.total).toBeGreaterThan(0);
     });
 
     it("findAll — debe listar facturas con filtro de status", async () => {
@@ -973,12 +976,16 @@ describe("InvoicesService (Integration)", () => {
       const voidedInvoices = await service.findAll({
         status: InvoiceStatus.VOID,
       });
-      expect(voidedInvoices.some((inv) => inv.id === invoice.id)).toBe(true);
+      expect(voidedInvoices.data.some((inv) => inv.id === invoice.id)).toBe(
+        true,
+      );
 
       const issuedInvoices = await service.findAll({
         status: InvoiceStatus.ISSUED,
       });
-      expect(issuedInvoices.every((inv) => inv.id !== invoice.id)).toBe(true);
+      expect(issuedInvoices.data.every((inv) => inv.id !== invoice.id)).toBe(
+        true,
+      );
     });
   });
 });

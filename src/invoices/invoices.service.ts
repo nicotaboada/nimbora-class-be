@@ -8,6 +8,7 @@ import { CreateInvoiceInput } from "./dto/create-invoice.input";
 import { CreateInvoiceLineInput } from "./dto/create-invoice-line.input";
 import { AddInvoiceLineInput } from "./dto/add-invoice-line.input";
 import { UpdateInvoiceLineInput } from "./dto/update-invoice-line.input";
+import { InvoicesFilterInput } from "./dto/findAll-filter.input";
 import { Invoice } from "./entities/invoice.entity";
 import { InvoiceLine } from "./entities/invoice-line.entity";
 import {
@@ -15,7 +16,7 @@ import {
   calculateInvoiceTotals,
   validateDiscount,
 } from "./utils/invoice-calculator";
-import { ChargeStatus, InvoiceStatus } from "@prisma/client";
+import { ChargeStatus, InvoiceStatus, Prisma } from "@prisma/client";
 import { InvoiceLineType } from "./enums/invoice-line-type.enum";
 import { DiscountType } from "./enums/discount-type.enum";
 import { LineDataToCreate, InvoiceWithLines } from "./types/invoice.types";
@@ -417,25 +418,52 @@ export class InvoicesService {
   }
 
   /**
-   * Lista facturas con filtros opcionales.
+   * Lista facturas con filtros opcionales y paginación.
    */
-  async findAll(filters?: {
-    studentId?: string;
-    status?: InvoiceStatus;
-  }): Promise<Invoice[]> {
-    const where: { studentId?: string; status?: InvoiceStatus } = {};
+  async findAll(filters?: InvoicesFilterInput) {
+    const pageInput: number = filters?.page ?? 1;
+    const limitInput: number = filters?.limit ?? 10;
+    const page: number = Math.max(1, pageInput);
+    const limit: number = Math.min(Math.max(1, limitInput), 100);
+    const skip: number = (page - 1) * limit;
+    const where: Prisma.InvoiceWhereInput = {};
     if (filters?.studentId) {
       where.studentId = filters.studentId;
     }
     if (filters?.status) {
       where.status = filters.status;
     }
-    const invoices = await this.prisma.invoice.findMany({
-      where,
-      include: { lines: true },
-      orderBy: { createdAt: "desc" },
-    });
-    return invoices.map((inv) => this.mapInvoiceToEntity(inv));
+    if (filters?.search) {
+      where.recipientName = { contains: filters.search, mode: "insensitive" };
+    }
+    if (filters?.issueDateFrom || filters?.issueDateTo) {
+      where.issueDate = {
+        ...(filters.issueDateFrom && { gte: filters.issueDateFrom }),
+        ...(filters.issueDateTo && { lte: filters.issueDateTo }),
+      };
+    }
+    const [total, invoices] = await Promise.all([
+      this.prisma.invoice.count({ where }),
+      this.prisma.invoice.findMany({
+        where,
+        include: { lines: true },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+    ]);
+    const totalPages = Math.ceil(total / limit);
+    return {
+      data: invoices.map((inv) => this.mapInvoiceToEntity(inv)),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      },
+    };
   }
 
   /**

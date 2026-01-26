@@ -4,7 +4,8 @@ import { Invoice } from "./entities/invoice.entity";
 import { CreateInvoiceInput } from "./dto/create-invoice.input";
 import { AddInvoiceLineInput } from "./dto/add-invoice-line.input";
 import { UpdateInvoiceLineInput } from "./dto/update-invoice-line.input";
-import { InvoiceStatus } from "./enums/invoice-status.enum";
+import { InvoicesFilterInput } from "./dto/findAll-filter.input";
+import { PaginatedInvoices } from "./dto/paginated-invoices.output";
 
 @Resolver(() => Invoice)
 export class InvoicesResolver {
@@ -76,14 +77,15 @@ export class InvoicesResolver {
   }
 
   /**
-   * Lista facturas con filtros opcionales.
+   * Lista facturas con filtros opcionales y paginación.
    */
-  @Query(() => [Invoice], { name: "invoices", description: "Lista facturas" })
+  @Query(() => PaginatedInvoices, {
+    name: "invoices",
+    description: "Lista facturas paginada",
+  })
   async findAll(
-    @Args("studentId", { type: () => ID, nullable: true }) studentId?: string,
-    @Args("status", { type: () => InvoiceStatus, nullable: true })
-    status?: InvoiceStatus,
-  ): Promise<Invoice[]> {
-    return this.invoicesService.findAll({ studentId, status });
+    @Args("filter", { nullable: true }) filter?: InvoicesFilterInput,
+  ): Promise<PaginatedInvoices> {
+    return this.invoicesService.findAll(filter);
   }
 }

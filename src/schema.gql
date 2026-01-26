@@ -2,6 +2,14 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+input AddInvoiceLineInput {
+  """ID de la factura"""
+  invoiceId: String!
+
+  """Datos de la línea"""
+  line: CreateInvoiceLineInput!
+}
+
 input AssignFeeInput {
   """ID del fee a asignar"""
   feeId: String!
@@ -89,6 +97,54 @@ type ChargesForInvoiceOutput {
   charges: [Charge!]!
 }
 
+input CreateInvoiceInput {
+  """Fecha de vencimiento"""
+  dueDate: DateTime!
+
+  """Fecha de emisión"""
+  issueDate: DateTime!
+
+  """Líneas de la factura"""
+  lines: [CreateInvoiceLineInput!]!
+
+  """Notas privadas (internas)"""
+  privateNotes: String
+
+  """Notas públicas (visibles al cliente)"""
+  publicNotes: String
+  recipientAddress: String
+  recipientEmail: String
+
+  """Nombre del destinatario"""
+  recipientName: String!
+  recipientPhone: String
+
+  """ID del estudiante (null si es OTHER)"""
+  studentId: String
+}
+
+input CreateInvoiceLineInput {
+  """ID del cargo (requerido si type = CHARGE)"""
+  chargeId: String
+
+  """Descripción (requerido si type = MANUAL)"""
+  description: String
+
+  """Razón del descuento"""
+  discountReason: String
+  discountType: DiscountType
+
+  """Valor del descuento (0-100 si PERCENT, centavos si FIXED_AMOUNT)"""
+  discountValue: Int
+
+  """Valor del descuento en centavos (solo para FIXED_AMOUNT)"""
+  discountValueFixed: Int
+
+  """Monto original en centavos (requerido si type = MANUAL)"""
+  originalAmount: Int
+  type: InvoiceLineType! = CHARGE
+}
+
 input CreateMonthlyFeeInput {
   cost: Int!
   description: String!
@@ -121,6 +177,15 @@ input CreateStudentInput {
 A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
 """
 scalar DateTime
+
+"""Tipo de descuento"""
+enum DiscountType {
+  """Descuento de monto fijo en centavos"""
+  FIXED_AMOUNT
+
+  """Descuento porcentual (0-100)"""
+  PERCENT
+}
 
 type Fee {
   """Costo en centavos"""
@@ -161,24 +226,168 @@ enum FeeType {
   PERIODIC
 }
 
+type Invoice {
+  createdAt: DateTime!
+
+  """Fecha de vencimiento"""
+  dueDate: DateTime!
+  id: String!
+
+  """Número de factura secuencial"""
+  invoiceNumber: Int!
+
+  """Fecha de emisión"""
+  issueDate: DateTime!
+
+  """Líneas de la factura"""
+  lines: [InvoiceLine!]!
+
+  """Notas privadas (internas)"""
+  privateNotes: String
+
+  """Notas públicas (visibles al cliente)"""
+  publicNotes: String
+  recipientAddress: String
+  recipientEmail: String
+
+  """Nombre del destinatario"""
+  recipientName: String!
+  recipientPhone: String
+  status: InvoiceStatus!
+
+  """ID del estudiante (null si es OTHER)"""
+  studentId: String
+
+  """Subtotal en centavos (suma de originalAmount)"""
+  subtotal: Int!
+
+  """Total en centavos (suma de finalAmount)"""
+  total: Int!
+
+  """Total de descuentos en centavos"""
+  totalDiscount: Int!
+  updatedAt: DateTime!
+}
+
+type InvoiceLine {
+  """ID del cargo (null si es MANUAL)"""
+  chargeId: String
+  createdAt: DateTime!
+
+  """Descripción de la línea"""
+  description: String!
+
+  """Razón del descuento"""
+  discountReason: String
+  discountType: DiscountType
+
+  """Valor del descuento (% o centavos según tipo)"""
+  discountValue: Int
+
+  """Monto final en centavos (con descuento)"""
+  finalAmount: Int!
+  id: String!
+  invoiceId: String!
+
+  """Indica si la línea está activa o es histórica"""
+  isActive: Boolean!
+
+  """Monto original en centavos"""
+  originalAmount: Int!
+  type: InvoiceLineType!
+  updatedAt: DateTime!
+}
+
+"""Tipo de línea de factura"""
+enum InvoiceLineType {
+  """Línea proveniente de un Charge existente"""
+  CHARGE
+
+  """Línea manual (materiales, ajuste, clase extra)"""
+  MANUAL
+}
+
+"""Estado de la factura"""
+enum InvoiceStatus {
+  """Factura emitida"""
+  ISSUED
+
+  """Factura pagada completamente"""
+  PAID
+
+  """Factura con pago parcial"""
+  PARTIALLY_PAID
+
+  """Factura anulada (soft delete)"""
+  VOID
+}
+
+"""Filtros para listar facturas"""
+input InvoicesFilterInput {
+  """Fecha de emisión desde (inclusive)"""
+  issueDateFrom: DateTime
+
+  """Fecha de emisión hasta (inclusive)"""
+  issueDateTo: DateTime
+
+  """Cantidad de items por página (máx 100)"""
+  limit: Int = 10
+
+  """Número de página (desde 1)"""
+  page: Int = 1
+
+  """Buscar en recipientName (búsqueda parcial, case-insensitive)"""
+  search: String
+
+  """Filtrar por estado"""
+  status: InvoiceStatus
+
+  """Filtrar por ID de alumno"""
+  studentId: ID
+}
+
 type Mutation {
+  """Agrega una línea a una factura existente"""
+  addInvoiceLine(input: AddInvoiceLineInput!): Invoice!
+
   """Asigna un fee a estudiantes"""
   assignFeeToStudents(input: AssignFeeInput!): AssignFeeOutput!
+
+  """Crea una nueva factura"""
+  createInvoice(input: CreateInvoiceInput!): Invoice!
   createMonthlyFee(input: CreateMonthlyFeeInput!): Fee!
   createOneOffFee(input: CreateOneOffFeeInput!): Fee!
   createPeriodicFee(input: CreatePeriodicFeeInput!): Fee!
   createStudent(createStudentInput: CreateStudentInput!): Student!
   deleteFee(id: ID!): Fee!
+
+  """Remueve una línea de una factura"""
+  removeInvoiceLine(lineId: ID!): Invoice!
   removeStudent(id: String!): Student!
+
+  """Actualiza el descuento de una línea"""
+  updateInvoiceLine(input: UpdateInvoiceLineInput!): Invoice!
   updateMonthlyFee(input: UpdateMonthlyFeeInput!): Fee!
   updateOneOffFee(input: UpdateOneOffFeeInput!): Fee!
   updatePeriodicFee(input: UpdatePeriodicFeeInput!): Fee!
   updateStudent(updateStudentInput: UpdateStudentInput!): Student!
+
+  """Anula una factura (soft delete)"""
+  voidInvoice(invoiceId: ID!): Invoice!
 }
 
 type PaginatedFees {
   """Lista de fees"""
   data: [Fee!]!
+
+  """Metadata de paginación"""
+  meta: PaginationMeta!
+}
+
+"""Resultado paginado de facturas"""
+type PaginatedInvoices {
+  """Lista de items"""
+  data: [Invoice!]!
 
   """Metadata de paginación"""
   meta: PaginationMeta!
@@ -220,6 +429,12 @@ type Query {
   chargesForInvoice(input: ChargesForInvoiceInput!): ChargesForInvoiceOutput!
   fee(id: ID!): Fee!
   fees(limit: Int = 10, page: Int = 1): PaginatedFees!
+
+  """Obtiene una factura por ID"""
+  invoice(id: ID!): Invoice!
+
+  """Lista facturas paginada"""
+  invoices(filter: InvoicesFilterInput): PaginatedInvoices!
   student(id: String!): Student!
 
   """Obtiene IDs de estudiantes que ya tienen un fee asignado"""
@@ -254,6 +469,18 @@ type StudentStats {
 enum StudentStatus {
   DISABLED
   ENABLED
+}
+
+input UpdateInvoiceLineInput {
+  """Razón del descuento"""
+  discountReason: String
+  discountType: DiscountType
+
+  """Valor del descuento (0-100 si PERCENT, centavos si FIXED_AMOUNT)"""
+  discountValue: Int
+
+  """ID de la línea a actualizar"""
+  lineId: String!
 }
 
 input UpdateMonthlyFeeInput {

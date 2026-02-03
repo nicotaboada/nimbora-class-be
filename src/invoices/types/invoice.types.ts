@@ -16,5 +16,5 @@ export interface LineDataToCreate {
 
 // Tipo para invoice con líneas incluidas
 export type InvoiceWithLines = Prisma.InvoiceGetPayload<{
-  include: { lines: true };
+  include: { lines: true; payments: true };
 }>;

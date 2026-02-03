@@ -1,6 +1,7 @@
 import { ObjectType, Field, Int } from "@nestjs/graphql";
 import { InvoiceStatus } from "../enums/invoice-status.enum";
 import { InvoiceLine } from "./invoice-line.entity";
+import { Payment } from "../../payments/entities/payment.entity";
 
 @ObjectType()
 export class Invoice {
@@ -57,8 +58,24 @@ export class Invoice {
   @Field(() => Int, { description: "Total en centavos (suma de finalAmount)" })
   total: number;
 
+  @Field(() => Int, {
+    description: "Monto pagado en centavos (suma de pagos - devoluciones)",
+  })
+  paidAmount: number;
+
+  @Field(() => Int, {
+    description: "Saldo pendiente en centavos (total - paidAmount)",
+  })
+  balance: number;
+
   @Field(() => [InvoiceLine], { description: "Líneas de la factura" })
   lines: InvoiceLine[];
+
+  @Field(() => [Payment], {
+    nullable: true,
+    description: "Pagos asociados a esta factura",
+  })
+  payments?: Payment[];
 
   @Field()
   createdAt: Date;

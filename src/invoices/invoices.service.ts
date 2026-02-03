@@ -11,6 +11,7 @@ import { UpdateInvoiceLineInput } from "./dto/update-invoice-line.input";
 import { InvoicesFilterInput } from "./dto/findAll-filter.input";
 import { Invoice } from "./entities/invoice.entity";
 import { InvoiceLine } from "./entities/invoice-line.entity";
+import { Payment } from "../payments/entities/payment.entity";
 import {
   calculateFinalAmount,
   calculateInvoiceTotals,
@@ -66,6 +67,11 @@ export class InvoicesService {
     if (uniqueChargeIds.size !== chargeIds.length) {
       throw new BadRequestException("Duplicate chargeId in lines");
     }
+    // Preparar mapa de charges y validar FUERA de la transacción
+    const chargesMap = new Map<
+      string,
+      { amount: number; feeDescription: string }
+    >();
     if (chargeIds.length > 0) {
       const charges = await this.prisma.charge.findMany({
         where: { id: { in: chargeIds }, status: ChargeStatus.PENDING },
@@ -87,52 +93,47 @@ export class InvoicesService {
           );
         }
       }
-    }
-    const result = await this.prisma.$transaction(async (tx) => {
-      const chargesMap = new Map<
-        string,
-        { amount: number; feeDescription: string }
-      >();
-      if (chargeIds.length > 0) {
-        const charges = await tx.charge.findMany({
-          where: { id: { in: chargeIds } },
-          include: { fee: true },
+      // Construir mapa para usar en la transacción
+      for (const c of charges) {
+        chargesMap.set(c.id, {
+          amount: c.amount,
+          feeDescription: c.fee.description,
         });
-        for (const c of charges) {
-          chargesMap.set(c.id, {
-            amount: c.amount,
-            feeDescription: c.fee.description,
-          });
-        }
       }
-      const linesToCreate = lineInputs.map((lineInput) => {
-        if (lineInput.type === InvoiceLineType.CHARGE && lineInput.chargeId) {
-          const chargeData = chargesMap.get(lineInput.chargeId);
-          if (!chargeData) {
-            throw new BadRequestException(
-              `Cargo ${lineInput.chargeId} no encontrado`,
-            );
-          }
-          return this.buildLineData(lineInput, chargeData);
-        } else {
-          // Validar campos requeridos para líneas MANUAL
-          if (
-            lineInput.originalAmount === undefined ||
-            lineInput.originalAmount === null
-          ) {
-            throw new BadRequestException(
-              "originalAmount es requerido para líneas MANUAL",
-            );
-          }
-          if (!lineInput.description) {
-            throw new BadRequestException(
-              "description es requerido para líneas MANUAL",
-            );
-          }
-          return this.buildLineData(lineInput);
+    }
+
+    // Preparar líneas y validar FUERA de la transacción
+    const linesToCreate = lineInputs.map((lineInput) => {
+      if (lineInput.type === InvoiceLineType.CHARGE && lineInput.chargeId) {
+        const chargeData = chargesMap.get(lineInput.chargeId);
+        if (!chargeData) {
+          throw new BadRequestException(
+            `Cargo ${lineInput.chargeId} no encontrado`,
+          );
         }
-      });
-      const totals = calculateInvoiceTotals(linesToCreate);
+        return this.buildLineData(lineInput, chargeData);
+      } else {
+        // Validar campos requeridos para líneas MANUAL
+        if (
+          lineInput.originalAmount === undefined ||
+          lineInput.originalAmount === null
+        ) {
+          throw new BadRequestException(
+            "originalAmount es requerido para líneas MANUAL",
+          );
+        }
+        if (!lineInput.description) {
+          throw new BadRequestException(
+            "description es requerido para líneas MANUAL",
+          );
+        }
+        return this.buildLineData(lineInput);
+      }
+    });
+    const totals = calculateInvoiceTotals(linesToCreate);
+
+    // Transacción optimizada: solo writes, sin validaciones ni queries de lectura
+    const result = await this.prisma.$transaction(async (tx) => {
       const invoice = await tx.invoice.create({
         data: {
           studentId,
@@ -148,11 +149,13 @@ export class InvoicesService {
           subtotal: totals.subtotal,
           totalDiscount: totals.totalDiscount,
           total: totals.total,
+          paidAmount: 0,
+          balance: totals.total,
           lines: {
             create: linesToCreate,
           },
         },
-        include: { lines: true },
+        include: { lines: true, payments: true },
       });
       if (chargeIds.length > 0) {
         await tx.charge.updateMany({
@@ -172,7 +175,7 @@ export class InvoicesService {
     const { invoiceId, line: lineInput } = input;
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
-      include: { lines: true },
+      include: { lines: true, payments: true },
     });
     if (!invoice) {
       throw new NotFoundException(`Factura con ID ${invoiceId} no encontrada`);
@@ -180,6 +183,15 @@ export class InvoicesService {
     if (invoice.status === InvoiceStatus.VOID) {
       throw new BadRequestException(
         "No se pueden agregar líneas a una factura anulada",
+      );
+    }
+    // Validar que no tenga payments APPROVED
+    const hasApprovedPayments = invoice.payments.some(
+      (p) => p.status === "APPROVED",
+    );
+    if (hasApprovedPayments) {
+      throw new BadRequestException(
+        "No se puede modificar una factura con pagos registrados",
       );
     }
     const result = await this.prisma.$transaction(async (tx) => {
@@ -246,8 +258,9 @@ export class InvoicesService {
           subtotal: totals.subtotal,
           totalDiscount: totals.totalDiscount,
           total: totals.total,
+          balance: Math.max(0, totals.total - invoice.paidAmount),
         },
-        include: { lines: true },
+        include: { lines: true, payments: true },
       });
       return updatedInvoice;
     });
@@ -261,7 +274,7 @@ export class InvoicesService {
     const { lineId, discountType, discountValue, discountReason } = input;
     const line = await this.prisma.invoiceLine.findUnique({
       where: { id: lineId },
-      include: { invoice: true },
+      include: { invoice: { include: { payments: true } } },
     });
     if (!line) {
       throw new NotFoundException(`Línea con ID ${lineId} no encontrada`);
@@ -271,6 +284,15 @@ export class InvoicesService {
     }
     if (line.invoice.status === InvoiceStatus.VOID) {
       throw new BadRequestException("No se puede editar una factura anulada");
+    }
+    // Validar que no tenga payments APPROVED
+    const hasApprovedPayments = line.invoice.payments.some(
+      (p) => p.status === "APPROVED",
+    );
+    if (hasApprovedPayments) {
+      throw new BadRequestException(
+        "No se puede modificar una factura con pagos registrados",
+      );
     }
     // Validar descuento
     const validation = validateDiscount(
@@ -306,8 +328,9 @@ export class InvoicesService {
           subtotal: totals.subtotal,
           totalDiscount: totals.totalDiscount,
           total: totals.total,
+          balance: Math.max(0, totals.total - line.invoice.paidAmount),
         },
-        include: { lines: true },
+        include: { lines: true, payments: true },
       });
       return updatedInvoice;
     });
@@ -320,7 +343,7 @@ export class InvoicesService {
   async removeInvoiceLine(lineId: string): Promise<Invoice> {
     const line = await this.prisma.invoiceLine.findUnique({
       where: { id: lineId },
-      include: { invoice: true },
+      include: { invoice: { include: { payments: true } } },
     });
     if (!line) {
       throw new NotFoundException(`Línea con ID ${lineId} no encontrada`);
@@ -331,6 +354,15 @@ export class InvoicesService {
     if (line.invoice.status === InvoiceStatus.VOID) {
       throw new BadRequestException(
         "No se puede modificar una factura anulada",
+      );
+    }
+    // Validar que no tenga payments APPROVED
+    const hasApprovedPayments = line.invoice.payments.some(
+      (p) => p.status === "APPROVED",
+    );
+    if (hasApprovedPayments) {
+      throw new BadRequestException(
+        "No se puede modificar una factura con pagos registrados",
       );
     }
     const result = await this.prisma.$transaction(async (tx) => {
@@ -354,8 +386,9 @@ export class InvoicesService {
           subtotal: totals.subtotal,
           totalDiscount: totals.totalDiscount,
           total: totals.total,
+          balance: Math.max(0, totals.total - line.invoice.paidAmount),
         },
-        include: { lines: true },
+        include: { lines: true, payments: true },
       });
       return updatedInvoice;
     });
@@ -364,11 +397,12 @@ export class InvoicesService {
 
   /**
    * Anula una factura (soft delete).
+   * También anula todos los payments y créditos asociados.
    */
   async voidInvoice(invoiceId: string): Promise<Invoice> {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
-      include: { lines: true },
+      include: { lines: true, payments: true },
     });
     if (!invoice) {
       throw new NotFoundException(`Factura con ID ${invoiceId} no encontrada`);
@@ -376,14 +410,44 @@ export class InvoicesService {
     if (invoice.status === InvoiceStatus.VOID) {
       throw new BadRequestException("La factura ya está anulada");
     }
-    if (invoice.status === InvoiceStatus.PAID) {
-      throw new BadRequestException("No se puede anular una factura pagada");
-    }
     const result = await this.prisma.$transaction(async (tx) => {
+      // 1. Anular payments APPROVED asociados
+      const approvedPayments = invoice.payments.filter(
+        (p) => p.status === "APPROVED",
+      );
+      if (approvedPayments.length > 0) {
+        await tx.payment.updateMany({
+          where: {
+            invoiceId,
+            status: "APPROVED",
+          },
+          data: {
+            status: "VOID",
+            voidReason: "Invoice anulada",
+            voidedAt: new Date(),
+          },
+        });
+
+        // 2. Anular créditos generados por esos payments
+        const paymentIds = approvedPayments.map((p) => p.id);
+        await tx.studentCredit.updateMany({
+          where: {
+            sourcePaymentId: { in: paymentIds },
+            status: "AVAILABLE",
+          },
+          data: {
+            status: "VOID",
+          },
+        });
+      }
+
+      // 3. Desactivar líneas
       await tx.invoiceLine.updateMany({
         where: { invoiceId, isActive: true },
         data: { isActive: false },
       });
+
+      // 4. Liberar charges
       const chargeIds = invoice.lines
         .filter((l) => l.isActive && l.chargeId)
         .map((l) => l.chargeId);
@@ -393,10 +457,16 @@ export class InvoicesService {
           data: { status: ChargeStatus.PENDING },
         });
       }
+
+      // 5. Actualizar invoice (VOID + resetear totales de pago)
       const updatedInvoice = await tx.invoice.update({
         where: { id: invoiceId },
-        data: { status: InvoiceStatus.VOID },
-        include: { lines: true },
+        data: {
+          status: InvoiceStatus.VOID,
+          paidAmount: 0,
+          balance: 0,
+        },
+        include: { lines: true, payments: true },
       });
       return updatedInvoice;
     });
@@ -409,7 +479,7 @@ export class InvoicesService {
   async findById(invoiceId: string): Promise<Invoice> {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
-      include: { lines: true },
+      include: { lines: true, payments: true },
     });
     if (!invoice) {
       throw new NotFoundException(`Factura con ID ${invoiceId} no encontrada`);
@@ -446,7 +516,7 @@ export class InvoicesService {
       this.prisma.invoice.count({ where }),
       this.prisma.invoice.findMany({
         where,
-        include: { lines: true },
+        include: { lines: true, payments: true },
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
@@ -532,7 +602,6 @@ export class InvoicesService {
     }
     const activeLines = [...invoice.lines]
       .filter((l) => l.isActive)
-      // Usamos sort() porque toSorted() no está disponible en ES2021
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     return {
       id: invoice.id,
@@ -550,7 +619,10 @@ export class InvoicesService {
       subtotal: invoice.subtotal,
       totalDiscount: invoice.totalDiscount,
       total: invoice.total,
+      paidAmount: invoice.paidAmount,
+      balance: invoice.balance,
       lines: activeLines.map((line) => this.mapLineToEntity(line)),
+      payments: (invoice.payments ?? []) as Payment[],
       createdAt: invoice.createdAt,
       updatedAt: invoice.updatedAt,
     };

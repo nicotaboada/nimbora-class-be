@@ -7,6 +7,8 @@ import { StudentsModule } from "./students/students.module";
 import { FeesModule } from "./fees/fees.module";
 import { ChargesModule } from "./charges/charges.module";
 import { InvoicesModule } from "./invoices/invoices.module";
+import { PaymentsModule } from "./payments/payments.module";
+import { CreditsModule } from "./credits/credits.module";
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { InvoicesModule } from "./invoices/invoices.module";
     FeesModule,
     ChargesModule,
     InvoicesModule,
+    PaymentsModule,
+    CreditsModule,
   ],
   providers: [PrismaService],
 })

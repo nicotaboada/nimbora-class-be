@@ -425,8 +425,8 @@ query GetInvoice($id: String!) {
 Lista facturas con filtros.
 
 ```graphql
-query GetInvoices($studentId: String, $status: InvoiceStatus) {
-  invoices(studentId: $studentId, status: $status) {
+query GetInvoices($filter: InvoicesFilterInput) {
+  invoices(filter: $filter) {
     id
     invoiceNumber
     recipientName
@@ -437,6 +437,40 @@ query GetInvoices($studentId: String, $status: InvoiceStatus) {
   }
 }
 ```
+
+**InvoicesFilterInput:**
+
+| Campo          | Tipo           | Descripción                                      |
+| -------------- | -------------- | ------------------------------------------------ |
+| `studentId`    | ID (opcional)  | Filtra por ID de alumno                          |
+| `status`       | InvoiceStatus  | Filtra por estado (ISSUED, PAID, etc.)           |
+| `search`       | String         | Busca en `recipientName` (parcial, case-insensitive) |
+| `issueDateFrom`| DateTime       | Fecha de emisión >= valor (inclusive)            |
+| `issueDateTo`  | DateTime       | Fecha de emisión <= valor (inclusive)            |
+
+**Ejemplo con filtros:**
+
+```graphql
+query {
+  invoices(filter: {
+    search: "García"
+    issueDateFrom: "2026-01-01"
+    issueDateTo: "2026-01-31"
+    status: ISSUED
+  }) {
+    id
+    invoiceNumber
+    recipientName
+    issueDate
+    total
+  }
+}
+```
+
+**Notas:**
+- Todos los filtros son opcionales y se combinan con AND
+- `search` usa `ILIKE '%valor%'` en PostgreSQL (búsqueda parcial)
+- Si no se pasan filtros, retorna todas las facturas ordenadas por fecha de creación desc
 
 ---
 

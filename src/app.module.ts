@@ -9,6 +9,7 @@ import { ChargesModule } from "./charges/charges.module";
 import { InvoicesModule } from "./invoices/invoices.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { CreditsModule } from "./credits/credits.module";
+import { AfipModule } from "./afip/afip.module";
 
 @Module({
   imports: [

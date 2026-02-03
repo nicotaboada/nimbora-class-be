@@ -103,9 +103,7 @@ Fee (plantilla)
 - `ISSUED` - Factura emitida (default al crear)
 - `PAID` - Todos los cargos pagados
 - `PARTIALLY_PAID` - Algunos cargos pagados (para pagos parciales futuros)
-- `VOID` - Anulada (soft delete, mantiene historial)
-
-### Reglas de negocio
+- `VOID` - Anulada (soft delete, mantiene historial)### Reglas de negocio
 
 1. **Descuentos solo en InvoiceLine** - El `Charge.amount` nunca se modifica
 2. **isActive en InvoiceLine** - Flag técnico para unicidad vs histórico:

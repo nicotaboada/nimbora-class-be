@@ -40,6 +40,7 @@ export default defineConfig(
       "unicorn/prevent-abbreviations": "off", // Permite abreviaciones comunes (args, props, etc)
       "unicorn/no-null": "off", // TypeScript/NestJS usa null
       "unicorn/prefer-top-level-await": "off", // NestJS bootstrap pattern es válido
+      "unicorn/no-array-sort": "off", // toSorted() no está disponible en nuestra versión de ES
     },
   },
   eslintPluginPrettier

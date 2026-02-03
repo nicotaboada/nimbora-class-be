@@ -109,6 +109,7 @@ export class ChargesService {
         periodMonth: invoiceMonth,
         status: ChargeStatus.PENDING,
       },
+      include: { fee: true },
       orderBy: { issueDate: "asc" },
     });
     const charges = currentMonthChargesRaw.map((charge) =>
@@ -121,6 +122,7 @@ export class ChargesService {
           status: ChargeStatus.PENDING,
           dueDate: { lt: invoiceMonthStart },
         },
+        include: { fee: true },
         orderBy: { dueDate: "asc" },
       });
       const pastDueCharges = pastDueChargesRaw.map((charge) =>

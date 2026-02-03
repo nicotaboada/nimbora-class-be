@@ -231,13 +231,20 @@ export function isChargeOverdue(
 
 /**
  * Mapea un Prisma Charge a la entidad Charge con isOverdue calculado.
+ * Si el charge incluye el fee (via include), también mapea el objeto fee con id y description.
  */
 export function mapChargeToEntity(
-  charge: PrismaCharge,
+  charge: PrismaCharge & { fee?: Fee | null },
   currentDate: Date = new Date(),
 ): Charge {
   return {
     ...charge,
+    fee: charge.fee
+      ? {
+          id: charge.fee.id,
+          description: charge.fee.description,
+        }
+      : undefined,
     isOverdue: isChargeOverdue(charge.dueDate, charge.status, currentDate),
   };
 }

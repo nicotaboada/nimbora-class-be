@@ -27,6 +27,20 @@ export class TestPrismaService extends PrismaClient {
   async ensureSchema() {
     await this.createEnums();
     await this.createTables();
+    await this.addMissingColumns();
+  }
+
+  private async addMissingColumns() {
+    // Add paidAmount and balance to Invoice if they don't exist
+    try {
+      await this.$executeRawUnsafe(`
+        ALTER TABLE "Invoice" 
+        ADD COLUMN IF NOT EXISTS "paidAmount" INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS "balance" INTEGER NOT NULL DEFAULT 0;
+      `);
+    } catch (e) {
+      // Columns might already exist
+    }
   }
 
   private async createEnums() {
@@ -57,10 +71,82 @@ export class TestPrismaService extends PrismaClient {
       END $$;
     `);
 
-    // ChargeStatus enum
+    // ChargeStatus enum (with INVOICED)
     await this.$executeRawUnsafe(`
       DO $$ BEGIN
-        CREATE TYPE "ChargeStatus" AS ENUM ('PENDING', 'PAID', 'CANCELLED');
+        CREATE TYPE "ChargeStatus" AS ENUM ('PENDING', 'PAID', 'CANCELLED', 'INVOICED');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // Ensure INVOICED value exists if enum was created without it
+    try {
+      await this.$executeRawUnsafe(`
+        ALTER TYPE "ChargeStatus" ADD VALUE IF NOT EXISTS 'INVOICED';
+      `);
+    } catch {
+      // Ignore error if value already exists
+    }
+
+    // InvoiceStatus enum
+    await this.$executeRawUnsafe(`
+      DO $$ BEGIN
+        CREATE TYPE "InvoiceStatus" AS ENUM ('ISSUED', 'PAID', 'PARTIALLY_PAID', 'VOID');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // DiscountType enum
+    await this.$executeRawUnsafe(`
+      DO $$ BEGIN
+        CREATE TYPE "DiscountType" AS ENUM ('PERCENT', 'FIXED_AMOUNT');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // InvoiceLineType enum
+    await this.$executeRawUnsafe(`
+      DO $$ BEGIN
+        CREATE TYPE "InvoiceLineType" AS ENUM ('CHARGE', 'MANUAL');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // PaymentMethod enum
+    await this.$executeRawUnsafe(`
+      DO $$ BEGIN
+        CREATE TYPE "PaymentMethod" AS ENUM ('CASH', 'BANK_TRANSFER', 'CARD');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // PaymentStatus enum
+    await this.$executeRawUnsafe(`
+      DO $$ BEGIN
+        CREATE TYPE "PaymentStatus" AS ENUM ('PENDING_REVIEW', 'APPROVED', 'REJECTED', 'VOID');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // PaymentType enum
+    await this.$executeRawUnsafe(`
+      DO $$ BEGIN
+        CREATE TYPE "PaymentType" AS ENUM ('PAYMENT', 'REFUND');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // CreditStatus enum
+    await this.$executeRawUnsafe(`
+      DO $$ BEGIN
+        CREATE TYPE "CreditStatus" AS ENUM ('AVAILABLE', 'USED', 'VOID');
       EXCEPTION
         WHEN duplicate_object THEN null;
       END $$;
@@ -137,6 +223,152 @@ export class TestPrismaService extends PrismaClient {
     `);
     await this.$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS "Charge_periodMonth_idx" ON "Charge"("periodMonth");
+    `);
+
+    // Invoice table
+    await this.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "Invoice" (
+        "id" TEXT NOT NULL,
+        "invoiceNumber" SERIAL NOT NULL,
+        "studentId" TEXT,
+        "recipientName" TEXT NOT NULL,
+        "recipientEmail" TEXT,
+        "recipientPhone" TEXT,
+        "recipientAddress" TEXT,
+        "issueDate" TIMESTAMP(3) NOT NULL,
+        "dueDate" TIMESTAMP(3) NOT NULL,
+        "publicNotes" TEXT,
+        "privateNotes" TEXT,
+        "status" "InvoiceStatus" NOT NULL DEFAULT 'ISSUED',
+        "subtotal" INTEGER NOT NULL,
+        "totalDiscount" INTEGER NOT NULL,
+        "total" INTEGER NOT NULL,
+        "paidAmount" INTEGER NOT NULL DEFAULT 0,
+        "balance" INTEGER NOT NULL DEFAULT 0,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL,
+        CONSTRAINT "Invoice_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "Invoice_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student"("id") ON DELETE SET NULL ON UPDATE CASCADE
+      );
+    `);
+
+    // Invoice indexes
+    await this.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "Invoice_studentId_idx" ON "Invoice"("studentId");
+    `);
+    await this.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "Invoice_status_idx" ON "Invoice"("status");
+    `);
+
+    // InvoiceLine table
+    await this.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "InvoiceLine" (
+        "id" TEXT NOT NULL,
+        "invoiceId" TEXT NOT NULL,
+        "type" "InvoiceLineType" NOT NULL DEFAULT 'CHARGE',
+        "chargeId" TEXT,
+        "description" TEXT NOT NULL,
+        "originalAmount" INTEGER NOT NULL,
+        "discountType" "DiscountType",
+        "discountValue" INTEGER,
+        "discountReason" TEXT,
+        "finalAmount" INTEGER NOT NULL,
+        "isActive" BOOLEAN NOT NULL DEFAULT true,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL,
+        CONSTRAINT "InvoiceLine_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "InvoiceLine_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "InvoiceLine_chargeId_fkey" FOREIGN KEY ("chargeId") REFERENCES "Charge"("id") ON DELETE SET NULL ON UPDATE CASCADE
+      );
+    `);
+
+    // InvoiceLine indexes
+    await this.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "InvoiceLine_invoiceId_idx" ON "InvoiceLine"("invoiceId");
+    `);
+    await this.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "InvoiceLine_chargeId_idx" ON "InvoiceLine"("chargeId");
+    `);
+
+    // Partial unique index for active charge lines
+    await this.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "uniq_active_charge_invoiceline" 
+      ON "InvoiceLine" ("chargeId") 
+      WHERE "chargeId" IS NOT NULL AND "isActive" = true;
+    `);
+
+    // Payment table
+    await this.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "Payment" (
+        "id" TEXT NOT NULL,
+        "invoiceId" TEXT NOT NULL,
+        "type" "PaymentType" NOT NULL DEFAULT 'PAYMENT',
+        "amount" INTEGER NOT NULL,
+        "method" "PaymentMethod" NOT NULL,
+        "status" "PaymentStatus" NOT NULL DEFAULT 'APPROVED',
+        "paidAt" TIMESTAMP(3) NOT NULL,
+        "reference" TEXT,
+        "voidReason" TEXT,
+        "voidedAt" TIMESTAMP(3),
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL,
+        CONSTRAINT "Payment_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "Payment_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+    `);
+
+    // Payment indexes
+    await this.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "Payment_invoiceId_idx" ON "Payment"("invoiceId");
+    `);
+    await this.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "Payment_paidAt_idx" ON "Payment"("paidAt");
+    `);
+    await this.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "Payment_status_idx" ON "Payment"("status");
+    `);
+
+    // StudentCredit table
+    await this.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "StudentCredit" (
+        "id" TEXT NOT NULL,
+        "studentId" TEXT NOT NULL,
+        "amount" INTEGER NOT NULL,
+        "availableAmount" INTEGER NOT NULL,
+        "status" "CreditStatus" NOT NULL DEFAULT 'AVAILABLE',
+        "sourcePaymentId" TEXT NOT NULL,
+        "sourceInvoiceId" TEXT NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL,
+        CONSTRAINT "StudentCredit_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "StudentCredit_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+        CONSTRAINT "StudentCredit_sourcePaymentId_fkey" FOREIGN KEY ("sourcePaymentId") REFERENCES "Payment"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+        CONSTRAINT "StudentCredit_sourceInvoiceId_fkey" FOREIGN KEY ("sourceInvoiceId") REFERENCES "Invoice"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+      );
+    `);
+
+    // StudentCredit indexes
+    await this.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "StudentCredit_studentId_idx" ON "StudentCredit"("studentId");
+    `);
+    await this.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "StudentCredit_status_idx" ON "StudentCredit"("status");
+    `);
+    await this.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "StudentCredit_sourcePaymentId_idx" ON "StudentCredit"("sourcePaymentId");
+    `);
+    await this.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "StudentCredit_sourcePaymentId_key" ON "StudentCredit"("sourcePaymentId");
+    `);
+  }
+
+  /**
+   * Limpia todas las tablas para tests
+   */
+  async cleanDatabase() {
+    // Use a single TRUNCATE command with CASCADE to avoid deadlocks
+    await this.$executeRawUnsafe(`
+      TRUNCATE TABLE "StudentCredit", "Payment", "InvoiceLine", "Invoice", "Charge", "Fee", "Student" CASCADE;
     `);
   }
 }

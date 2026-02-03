@@ -26,6 +26,8 @@ model Student {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   charges     Charge[]
+  invoices    Invoice[]
+  credits     StudentCredit[]
 }
 
 enum FeeType {
@@ -66,22 +68,200 @@ enum ChargeStatus {
 }
 
 model Charge {
-  id                String       @id @default(uuid())
-  fee               Fee          @relation(fields: [feeId], references: [id])
+  id                String        @id @default(uuid())
+  fee               Fee           @relation(fields: [feeId], references: [id])
   feeId             String
-  student           Student      @relation(fields: [studentId], references: [id])
+  student           Student       @relation(fields: [studentId], references: [id])
   studentId         String
-  amount            Int          // Monto en centavos (snapshot de Fee.cost)
-  periodMonth       String       // "2026-01" - mes al que pertenece (para agrupar/invoices)
-  installmentNumber Int          // 1, 2, 3... N - número de cuota global
-  issueDate         DateTime     // Fecha de emisión (día de cobro)
-  dueDate           DateTime     // Fecha de vencimiento (issueDate + graceDays)
-  status            ChargeStatus @default(PENDING)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  amount            Int           // Monto en centavos (snapshot de Fee.cost)
+  periodMonth       String        // "2026-01" - mes al que pertenece (para agrupar/invoices)
+  installmentNumber Int           // 1, 2, 3... N - número de cuota global
+  issueDate         DateTime      // Fecha de emisión (día de cobro)
+  dueDate           DateTime      // Fecha de vencimiento (issueDate + graceDays)
+  status            ChargeStatus  @default(PENDING)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  invoiceLines      InvoiceLine[]
 
   @@unique([studentId, feeId, installmentNumber])
   @@index([studentId])
   @@index([feeId])
   @@index([periodMonth])
+}
+
+// ============================================================================
+// INVOICE MODULE
+// ============================================================================
+
+enum InvoiceStatus {
+  ISSUED
+  PAID
+  PARTIALLY_PAID
+  VOID
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED_AMOUNT
+}
+
+enum InvoiceLineType {
+  CHARGE // Viene de un Charge existente
+  MANUAL // Fee ad-hoc (materiales, ajuste, clase extra)
+}
+
+model Invoice {
+  id               String        @id @default(uuid())
+  invoiceNumber    Int           @default(autoincrement())
+
+  // Recipient (studentId nullable para "OTHER")
+  studentId        String?
+  student          Student?      @relation(fields: [studentId], references: [id])
+  recipientName    String        // Siempre requerido (snapshot o manual)
+  recipientEmail   String?
+  recipientPhone   String?
+  recipientAddress String?
+
+  issueDate        DateTime
+  dueDate          DateTime
+  publicNotes      String?
+  privateNotes     String?
+  status           InvoiceStatus @default(ISSUED)
+
+  // Totales (cache - SIEMPRE calculados en backend)
+  subtotal         Int           // Suma de originalAmount de lines activas
+  totalDiscount    Int           // Suma de descuentos de lines activas
+  total            Int           // Suma de finalAmount de lines activas
+
+  // Campos de pagos (cache - calculados automáticamente)
+  paidAmount       Int           @default(0) // sum(PAYMENT approved) - sum(REFUND approved)
+  balance          Int           @default(0) // total - paidAmount
+
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  lines            InvoiceLine[]
+  payments         Payment[]
+  generatedCredits StudentCredit[]
+
+  @@index([studentId])
+  @@index([status])
+}
+
+model InvoiceLine {
+  id             String          @id @default(uuid())
+  invoiceId      String
+  invoice        Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  // Tipo de linea
+  type           InvoiceLineType @default(CHARGE)
+
+  // Charge (nullable - null si es MANUAL)
+  chargeId       String?
+  charge         Charge?         @relation(fields: [chargeId], references: [id])
+
+  // Datos de la linea
+  description    String          // Snapshot de Fee.description o manual
+  originalAmount Int             // Snapshot de Charge.amount o manual
+
+  // Descuento
+  discountType   DiscountType?
+  discountValue  Int?            // Porcentaje (0-100) o monto fijo en centavos
+  discountReason String?
+  finalAmount    Int             // originalAmount - descuento calculado
+
+  // Flag tecnico para unicidad vs historico
+  isActive       Boolean         @default(true)
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([invoiceId])
+  @@index([chargeId])
+  // NOTA: El unique parcial se crea en la migracion SQL manualmente:
+  // CREATE UNIQUE INDEX uniq_active_charge_invoiceline
+  // ON "InvoiceLine" ("chargeId")
+  // WHERE "chargeId" IS NOT NULL AND "isActive" = true;
+}
+
+// ============================================================================
+// PAYMENTS MODULE
+// ============================================================================
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+}
+
+enum PaymentStatus {
+  PENDING_REVIEW // Comprobante subido, esperando aprobación (futuro)
+  APPROVED       // Pago confirmado
+  REJECTED       // Rechazado (queda registrado)
+  VOID           // Anulado (soft delete)
+}
+
+enum PaymentType {
+  PAYMENT // Plata que entra (pago del alumno)
+  REFUND  // Plata que sale (devolución)
+}
+
+model Payment {
+  id         String        @id @default(uuid())
+  invoiceId  String
+  invoice    Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  type       PaymentType   @default(PAYMENT)
+  amount     Int           // centavos (siempre positivo)
+  method     PaymentMethod
+  status     PaymentStatus @default(APPROVED)
+  
+  paidAt     DateTime      // fecha real del pago
+  reference  String?       // nro transferencia, últimos 4 dígitos
+  
+  // Auditoría anulación/rechazo
+  voidReason String?
+  voidedAt   DateTime?
+  
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  
+  generatedCredit StudentCredit? // Crédito que generó este pago (si hubo overpay)
+  
+  @@index([invoiceId])
+  @@index([paidAt])
+  @@index([status])
+}
+
+// ============================================================================
+// CREDITS MODULE
+// ============================================================================
+
+enum CreditStatus {
+  AVAILABLE // Crédito disponible para usar
+  USED      // Crédito consumido (total o parcialmente)
+  VOID      // Anulado (si se anuló el payment origen)
+}
+
+model StudentCredit {
+  id              String       @id @default(uuid())
+  studentId       String
+  student         Student      @relation(fields: [studentId], references: [id])
+  
+  amount          Int          // Monto original del crédito (centavos)
+  availableAmount Int          // Monto disponible (para uso parcial futuro)
+  status          CreditStatus @default(AVAILABLE)
+  
+  // Trazabilidad: de dónde vino el crédito
+  sourcePaymentId String       @unique
+  sourcePayment   Payment      @relation(fields: [sourcePaymentId], references: [id])
+  sourceInvoiceId String
+  sourceInvoice   Invoice      @relation(fields: [sourceInvoiceId], references: [id])
+  
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  
+  @@index([studentId])
+  @@index([status])
+  @@index([sourcePaymentId])
 }

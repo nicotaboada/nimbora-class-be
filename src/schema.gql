@@ -2,6 +2,32 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+input AddInvoiceLineInput {
+  """ID de la factura"""
+  invoiceId: String!
+
+  """Datos de la línea"""
+  line: CreateInvoiceLineInput!
+}
+
+"""Input para agregar un pago"""
+input AddPaymentInput {
+  """Monto en centavos"""
+  amount: Int!
+
+  """ID de la factura"""
+  invoiceId: ID!
+
+  """Método de pago"""
+  method: PaymentMethod!
+
+  """Fecha del pago"""
+  paidAt: DateTime!
+
+  """Referencia del pago"""
+  reference: String
+}
+
 input AssignFeeInput {
   """ID del fee a asignar"""
   feeId: String!
@@ -28,6 +54,9 @@ type Charge {
 
   """Fecha de vencimiento del cargo"""
   dueDate: DateTime!
+
+  """Fee (Cargo) asociado"""
+  fee: ChargeFee
   feeId: String!
   id: String!
 
@@ -45,6 +74,14 @@ type Charge {
   status: ChargeStatus!
   studentId: String!
   updatedAt: DateTime!
+}
+
+type ChargeFee {
+  """Descripción del fee (Cargo)"""
+  description: String!
+
+  """ID del fee"""
+  id: String!
 }
 
 """Mes desde el cual empezar a cobrar"""
@@ -89,6 +126,54 @@ type ChargesForInvoiceOutput {
   charges: [Charge!]!
 }
 
+input CreateInvoiceInput {
+  """Fecha de vencimiento"""
+  dueDate: DateTime!
+
+  """Fecha de emisión"""
+  issueDate: DateTime!
+
+  """Líneas de la factura"""
+  lines: [CreateInvoiceLineInput!]!
+
+  """Notas privadas (internas)"""
+  privateNotes: String
+
+  """Notas públicas (visibles al cliente)"""
+  publicNotes: String
+  recipientAddress: String
+  recipientEmail: String
+
+  """Nombre del destinatario"""
+  recipientName: String!
+  recipientPhone: String
+
+  """ID del estudiante (null si es OTHER)"""
+  studentId: String
+}
+
+input CreateInvoiceLineInput {
+  """ID del cargo (requerido si type = CHARGE)"""
+  chargeId: String
+
+  """Descripción (requerido si type = MANUAL)"""
+  description: String
+
+  """Razón del descuento"""
+  discountReason: String
+  discountType: DiscountType
+
+  """Valor del descuento (0-100 si PERCENT, centavos si FIXED_AMOUNT)"""
+  discountValue: Int
+
+  """Valor del descuento en centavos (solo para FIXED_AMOUNT)"""
+  discountValueFixed: Int
+
+  """Monto original en centavos (requerido si type = MANUAL)"""
+  originalAmount: Int
+  type: InvoiceLineType! = CHARGE
+}
+
 input CreateMonthlyFeeInput {
   cost: Int!
   description: String!
@@ -117,10 +202,31 @@ input CreateStudentInput {
   phoneNumber: String
 }
 
+"""Estado del crédito"""
+enum CreditStatus {
+  """Crédito disponible para usar"""
+  AVAILABLE
+
+  """Crédito consumido (total o parcialmente)"""
+  USED
+
+  """Anulado"""
+  VOID
+}
+
 """
 A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
 """
 scalar DateTime
+
+"""Tipo de descuento"""
+enum DiscountType {
+  """Descuento de monto fijo en centavos"""
+  FIXED_AMOUNT
+
+  """Descuento porcentual (0-100)"""
+  PERCENT
+}
 
 type Fee {
   """Costo en centavos"""
@@ -161,24 +267,182 @@ enum FeeType {
   PERIODIC
 }
 
+type Invoice {
+  """Saldo pendiente en centavos (total - paidAmount)"""
+  balance: Int!
+  createdAt: DateTime!
+
+  """Fecha de vencimiento"""
+  dueDate: DateTime!
+  id: String!
+
+  """Número de factura secuencial"""
+  invoiceNumber: Int!
+
+  """Fecha de emisión"""
+  issueDate: DateTime!
+
+  """Líneas de la factura"""
+  lines: [InvoiceLine!]!
+
+  """Monto pagado en centavos (suma de pagos - devoluciones)"""
+  paidAmount: Int!
+
+  """Pagos asociados a esta factura"""
+  payments: [Payment!]
+
+  """Notas privadas (internas)"""
+  privateNotes: String
+
+  """Notas públicas (visibles al cliente)"""
+  publicNotes: String
+  recipientAddress: String
+  recipientEmail: String
+
+  """Nombre del destinatario"""
+  recipientName: String!
+  recipientPhone: String
+  status: InvoiceStatus!
+
+  """ID del estudiante (null si es OTHER)"""
+  studentId: String
+
+  """Subtotal en centavos (suma de originalAmount)"""
+  subtotal: Int!
+
+  """Total en centavos (suma de finalAmount)"""
+  total: Int!
+
+  """Total de descuentos en centavos"""
+  totalDiscount: Int!
+  updatedAt: DateTime!
+}
+
+type InvoiceLine {
+  """ID del cargo (null si es MANUAL)"""
+  chargeId: String
+  createdAt: DateTime!
+
+  """Descripción de la línea"""
+  description: String!
+
+  """Razón del descuento"""
+  discountReason: String
+  discountType: DiscountType
+
+  """Valor del descuento (% o centavos según tipo)"""
+  discountValue: Int
+
+  """Monto final en centavos (con descuento)"""
+  finalAmount: Int!
+  id: String!
+  invoiceId: String!
+
+  """Indica si la línea está activa o es histórica"""
+  isActive: Boolean!
+
+  """Monto original en centavos"""
+  originalAmount: Int!
+  type: InvoiceLineType!
+  updatedAt: DateTime!
+}
+
+"""Tipo de línea de factura"""
+enum InvoiceLineType {
+  """Línea proveniente de un Charge existente"""
+  CHARGE
+
+  """Línea manual (materiales, ajuste, clase extra)"""
+  MANUAL
+}
+
+"""Estado de la factura"""
+enum InvoiceStatus {
+  """Factura emitida"""
+  ISSUED
+
+  """Factura pagada completamente"""
+  PAID
+
+  """Factura con pago parcial"""
+  PARTIALLY_PAID
+
+  """Factura anulada (soft delete)"""
+  VOID
+}
+
+"""Filtros para listar facturas"""
+input InvoicesFilterInput {
+  """Fecha de emisión desde (inclusive)"""
+  issueDateFrom: DateTime
+
+  """Fecha de emisión hasta (inclusive)"""
+  issueDateTo: DateTime
+
+  """Cantidad de items por página (máx 100)"""
+  limit: Int = 10
+
+  """Número de página (desde 1)"""
+  page: Int = 1
+
+  """Buscar en recipientName (búsqueda parcial, case-insensitive)"""
+  search: String
+
+  """Filtrar por estado"""
+  status: InvoiceStatus
+
+  """Filtrar por ID de alumno"""
+  studentId: ID
+}
+
 type Mutation {
+  """Agrega una línea a una factura existente"""
+  addInvoiceLine(input: AddInvoiceLineInput!): Invoice!
+
+  """Agrega un pago a una factura"""
+  addPayment(input: AddPaymentInput!): Invoice!
+
   """Asigna un fee a estudiantes"""
   assignFeeToStudents(input: AssignFeeInput!): AssignFeeOutput!
+
+  """Crea una nueva factura"""
+  createInvoice(input: CreateInvoiceInput!): Invoice!
   createMonthlyFee(input: CreateMonthlyFeeInput!): Fee!
   createOneOffFee(input: CreateOneOffFeeInput!): Fee!
   createPeriodicFee(input: CreatePeriodicFeeInput!): Fee!
   createStudent(createStudentInput: CreateStudentInput!): Student!
   deleteFee(id: ID!): Fee!
+
+  """Remueve una línea de una factura"""
+  removeInvoiceLine(lineId: ID!): Invoice!
   removeStudent(id: String!): Student!
+
+  """Actualiza el descuento de una línea"""
+  updateInvoiceLine(input: UpdateInvoiceLineInput!): Invoice!
   updateMonthlyFee(input: UpdateMonthlyFeeInput!): Fee!
   updateOneOffFee(input: UpdateOneOffFeeInput!): Fee!
   updatePeriodicFee(input: UpdatePeriodicFeeInput!): Fee!
   updateStudent(updateStudentInput: UpdateStudentInput!): Student!
+
+  """Anula una factura (soft delete)"""
+  voidInvoice(invoiceId: ID!): Invoice!
+
+  """Anula un pago (soft delete)"""
+  voidPayment(input: VoidPaymentInput!): Invoice!
 }
 
 type PaginatedFees {
   """Lista de fees"""
   data: [Fee!]!
+
+  """Metadata de paginación"""
+  meta: PaginationMeta!
+}
+
+"""Resultado paginado de facturas"""
+type PaginatedInvoices {
+  """Lista de items"""
+  data: [Invoice!]!
 
   """Metadata de paginación"""
   meta: PaginationMeta!
@@ -212,6 +476,79 @@ type PaginationMeta {
   totalPages: Int!
 }
 
+"""Pago de una factura"""
+type Payment {
+  """Monto en centavos (siempre positivo)"""
+  amount: Int!
+
+  """Fecha de creación"""
+  createdAt: DateTime!
+  id: ID!
+
+  """ID de la factura asociada"""
+  invoiceId: ID!
+
+  """Método de pago"""
+  method: PaymentMethod!
+
+  """Fecha real del pago"""
+  paidAt: DateTime!
+
+  """Referencia del pago"""
+  reference: String
+
+  """Estado del pago"""
+  status: PaymentStatus!
+
+  """Tipo de movimiento"""
+  type: PaymentType!
+
+  """Fecha de última actualización"""
+  updatedAt: DateTime!
+
+  """Razón de anulación/rechazo"""
+  voidReason: String
+
+  """Fecha de anulación"""
+  voidedAt: DateTime
+}
+
+"""Método de pago"""
+enum PaymentMethod {
+  """Transferencia bancaria"""
+  BANK_TRANSFER
+
+  """Tarjeta"""
+  CARD
+
+  """Efectivo"""
+  CASH
+}
+
+"""Estado del pago"""
+enum PaymentStatus {
+  """Pago confirmado"""
+  APPROVED
+
+  """Comprobante subido, esperando aprobación"""
+  PENDING_REVIEW
+
+  """Rechazado"""
+  REJECTED
+
+  """Anulado"""
+  VOID
+}
+
+"""Tipo de movimiento"""
+enum PaymentType {
+  """Pago (entrada de dinero)"""
+  PAYMENT
+
+  """Devolución (salida de dinero)"""
+  REFUND
+}
+
 type Query {
   """Obtiene todos los cargos de un estudiante"""
   chargesByStudent(studentId: String!): [Charge!]!
@@ -220,7 +557,25 @@ type Query {
   chargesForInvoice(input: ChargesForInvoiceInput!): ChargesForInvoiceOutput!
   fee(id: ID!): Fee!
   fees(limit: Int = 10, page: Int = 1): PaginatedFees!
+
+  """Obtiene una factura por ID"""
+  invoice(id: ID!): Invoice!
+
+  """Lista facturas paginada"""
+  invoices(filter: InvoicesFilterInput): PaginatedInvoices!
+
+  """Obtiene un pago por ID"""
+  payment(id: ID!): Payment!
+
+  """Lista los pagos de una factura"""
+  paymentsByInvoice(invoiceId: ID!): [Payment!]!
   student(id: String!): Student!
+
+  """Suma de créditos disponibles de un estudiante (en centavos)"""
+  studentCreditBalance(studentId: ID!): Int!
+
+  """Lista los créditos de un estudiante"""
+  studentCredits(studentId: ID!): [StudentCredit!]!
 
   """Obtiene IDs de estudiantes que ya tienen un fee asignado"""
   studentIdsWithFee(feeId: String!): [String!]!
@@ -239,6 +594,34 @@ type Student {
   updatedAt: DateTime!
 }
 
+"""Crédito a favor de un estudiante"""
+type StudentCredit {
+  """Monto original del crédito en centavos"""
+  amount: Int!
+
+  """Monto disponible para usar en centavos"""
+  availableAmount: Int!
+
+  """Fecha de creación"""
+  createdAt: DateTime!
+  id: ID!
+
+  """ID de la factura donde se generó"""
+  sourceInvoiceId: ID!
+
+  """ID del pago que generó el crédito"""
+  sourcePaymentId: ID!
+
+  """Estado del crédito"""
+  status: CreditStatus!
+
+  """ID del estudiante"""
+  studentId: ID!
+
+  """Fecha de última actualización"""
+  updatedAt: DateTime!
+}
+
 type StudentStats {
   """Total de estudiantes activos (ENABLED)"""
   active: Int!
@@ -254,6 +637,18 @@ type StudentStats {
 enum StudentStatus {
   DISABLED
   ENABLED
+}
+
+input UpdateInvoiceLineInput {
+  """Razón del descuento"""
+  discountReason: String
+  discountType: DiscountType
+
+  """Valor del descuento (0-100 si PERCENT, centavos si FIXED_AMOUNT)"""
+  discountValue: Int
+
+  """ID de la línea a actualizar"""
+  lineId: String!
 }
 
 input UpdateMonthlyFeeInput {
@@ -287,4 +682,13 @@ input UpdateStudentInput {
   lastName: String
   phoneNumber: String
   status: StudentStatus
+}
+
+"""Input para anular un pago"""
+input VoidPaymentInput {
+  """ID del pago a anular"""
+  paymentId: ID!
+
+  """Razón de la anulación"""
+  reason: String
 }

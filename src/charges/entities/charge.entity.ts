@@ -1,5 +1,6 @@
 import { ObjectType, Field, Int } from "@nestjs/graphql";
 import { ChargeStatus } from "../enums/charge-status.enum";
+import { ChargeFee } from "./charge-fee.entity";
 
 @ObjectType()
 export class Charge {
@@ -8,6 +9,12 @@ export class Charge {
 
   @Field()
   feeId: string;
+
+  @Field(() => ChargeFee, {
+    nullable: true,
+    description: "Fee (Cargo) asociado",
+  })
+  fee?: ChargeFee;
 
   @Field()
   studentId: string;

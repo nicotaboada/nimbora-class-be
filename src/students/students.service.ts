@@ -1,26 +1,29 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from "@nestjs/common";
+import { Injectable, BadRequestException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateStudentInput } from "./dto/create-student.input";
 import { UpdateStudentInput } from "./dto/update-student.input";
 import { Prisma } from "@prisma/client";
-import { StudentStatus } from "./entities/student.entity";
+import { Student, StudentStatus } from "./entities/student.entity";
+import { mapStudentToEntity } from "./utils/student-mapper.util";
+import { assertOwnership } from "../common/utils/tenant-validation";
 
 @Injectable()
 export class StudentsService {
   constructor(private prisma: PrismaService) {}
 
-  async create(createStudentInput: CreateStudentInput) {
+  async create(
+    createStudentInput: CreateStudentInput,
+    academyId: string,
+  ): Promise<Student> {
     try {
-      return await this.prisma.student.create({
+      const student = await this.prisma.student.create({
         data: {
           ...createStudentInput,
+          academyId,
           status: StudentStatus.ENABLED,
         },
       });
+      return mapStudentToEntity(student);
     } catch (error: unknown) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -32,25 +35,31 @@ export class StudentsService {
     }
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, academyId: string): Promise<Student> {
     const student = await this.prisma.student.findUnique({
       where: { id },
     });
 
-    if (!student) {
-      throw new NotFoundException(`Estudiante con ID ${id} no encontrado`);
-    }
+    assertOwnership(student, academyId, "Estudiante");
 
-    return student;
+    return mapStudentToEntity(student);
   }
 
-  async findAll(page = 1, limit = 10, search?: string, status?: StudentStatus) {
+  async findAll(
+    academyId: string,
+    page = 1,
+    limit = 10,
+    search?: string,
+    status?: StudentStatus,
+  ) {
     const validPage = Math.max(1, page);
     const validLimit = Math.min(Math.max(1, limit), 100);
     const skip = (validPage - 1) * validLimit;
     const take = validLimit;
 
-    const where: Prisma.StudentWhereInput = {};
+    const where: Prisma.StudentWhereInput = {
+      academyId,
+    };
 
     if (search) {
       where.OR = [
@@ -78,7 +87,7 @@ export class StudentsService {
     const totalPages = Math.ceil(total / validLimit);
 
     return {
-      data,
+      data: data.map((student) => mapStudentToEntity(student)),
       meta: {
         total,
         page: validPage,
@@ -90,16 +99,20 @@ export class StudentsService {
     };
   }
 
-  async update(updateStudentInput: UpdateStudentInput) {
+  async update(
+    updateStudentInput: UpdateStudentInput,
+    academyId: string,
+  ): Promise<Student> {
     const { id, ...data } = updateStudentInput;
 
-    await this.findOne(id);
+    await this.findOne(id, academyId);
 
     try {
-      return await this.prisma.student.update({
+      const student = await this.prisma.student.update({
         where: { id },
         data,
       });
+      return mapStudentToEntity(student);
     } catch (error: unknown) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -111,22 +124,23 @@ export class StudentsService {
     }
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, academyId: string): Promise<Student> {
+    await this.findOne(id, academyId);
 
-    return await this.prisma.student.delete({
+    const student = await this.prisma.student.delete({
       where: { id },
     });
+    return mapStudentToEntity(student);
   }
 
-  async getStats() {
+  async getStats(academyId: string) {
     const [total, active, inactive] = await Promise.all([
-      this.prisma.student.count(),
+      this.prisma.student.count({ where: { academyId } }),
       this.prisma.student.count({
-        where: { status: StudentStatus.ENABLED },
+        where: { academyId, status: StudentStatus.ENABLED },
       }),
       this.prisma.student.count({
-        where: { status: StudentStatus.DISABLED },
+        where: { academyId, status: StudentStatus.DISABLED },
       }),
     ]);
 

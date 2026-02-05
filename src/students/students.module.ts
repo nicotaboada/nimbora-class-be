@@ -1,9 +1,11 @@
 import { Module } from "@nestjs/common";
 import { StudentsService } from "./students.service";
 import { StudentsResolver } from "./students.resolver";
-import { PrismaService } from "../prisma/prisma.service";
+import { AuthModule } from "../auth/auth.module";
 
 @Module({
-  providers: [StudentsResolver, StudentsService, PrismaService],
+  imports: [AuthModule],
+  providers: [StudentsResolver, StudentsService],
+  exports: [StudentsService],
 })
 export class StudentsModule {}

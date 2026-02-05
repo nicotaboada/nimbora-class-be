@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { InvoicesService } from "../invoices/invoices.service";
 import { AddPaymentInput } from "./dto/add-payment.input";
 import { VoidPaymentInput } from "./dto/void-payment.input";
 import { Payment } from "./entities/payment.entity";
@@ -15,26 +16,28 @@ import {
   CreditStatus,
   Prisma,
 } from "@prisma/client";
+import { assertOwnership } from "../common/utils/tenant-validation";
+import { mapInvoiceToEntity } from "../invoices/utils/invoice-mapper.util";
 
 @Injectable()
 export class PaymentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private invoicesService: InvoicesService,
+  ) {}
 
   /**
    * Agrega un pago a una factura.
    * Recalcula automáticamente los totales y el status de la factura.
    */
-  async addPayment(input: AddPaymentInput): Promise<Invoice> {
+  async addPayment(
+    input: AddPaymentInput,
+    academyId: string,
+  ): Promise<Invoice> {
     const { invoiceId, amount, method, paidAt, reference } = input;
 
-    // Validar que la factura existe y no está anulada
-    const invoice = await this.prisma.invoice.findUnique({
-      where: { id: invoiceId },
-    });
-
-    if (!invoice) {
-      throw new NotFoundException(`Factura con ID ${invoiceId} no encontrada`);
-    }
+    // Ownership: validar que invoice pertenece a la academy
+    const invoice = await this.invoicesService.findById(invoiceId, academyId);
 
     if (invoice.status === InvoiceStatus.VOID) {
       throw new BadRequestException(
@@ -87,14 +90,17 @@ export class PaymentsService {
       throw new NotFoundException(`Factura con ID ${invoiceId} no encontrada`);
     }
 
-    return this.mapInvoiceToEntity(result);
+    return mapInvoiceToEntity(result);
   }
 
   /**
    * Anula un pago (soft delete).
    * Recalcula automáticamente los totales y el status de la factura.
    */
-  async voidPayment(input: VoidPaymentInput): Promise<Invoice> {
+  async voidPayment(
+    input: VoidPaymentInput,
+    academyId: string,
+  ): Promise<Invoice> {
     const { paymentId, reason } = input;
 
     const payment = await this.prisma.payment.findUnique({
@@ -105,6 +111,9 @@ export class PaymentsService {
     if (!payment) {
       throw new NotFoundException(`Pago con ID ${paymentId} no encontrado`);
     }
+
+    // Ownership: validar que invoice del payment pertenece a la academy
+    assertOwnership(payment.invoice, academyId, "Invoice");
 
     if (payment.status !== PaymentStatus.APPROVED) {
       throw new BadRequestException(
@@ -158,20 +167,24 @@ export class PaymentsService {
       );
     }
 
-    return this.mapInvoiceToEntity(result);
+    return mapInvoiceToEntity(result);
   }
 
   /**
    * Obtiene un pago por ID.
    */
-  async findById(paymentId: string): Promise<Payment> {
+  async findById(paymentId: string, academyId: string): Promise<Payment> {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
+      include: { invoice: true },
     });
 
     if (!payment) {
       throw new NotFoundException(`Pago con ID ${paymentId} no encontrado`);
     }
+
+    // Ownership: validar que invoice del payment pertenece a la academy
+    assertOwnership(payment.invoice, academyId, "Invoice");
 
     return payment;
   }
@@ -179,7 +192,13 @@ export class PaymentsService {
   /**
    * Lista los pagos de una factura.
    */
-  async findByInvoice(invoiceId: string): Promise<Payment[]> {
+  async findByInvoice(
+    invoiceId: string,
+    academyId: string,
+  ): Promise<Payment[]> {
+    // Ownership: validar que invoice pertenece a la academy
+    await this.invoicesService.findById(invoiceId, academyId);
+
     return this.prisma.payment.findMany({
       where: { invoiceId },
       orderBy: { paidAt: "desc" },
@@ -234,54 +253,5 @@ export class PaymentsService {
       where: { id: invoiceId },
       data: { paidAmount, balance, status },
     });
-  }
-
-  /**
-   * Mapea una invoice de Prisma a entidad GraphQL.
-   * (Reutiliza lógica similar a InvoicesService)
-   */
-  private mapInvoiceToEntity(
-    invoice: Prisma.InvoiceGetPayload<{ include: { lines: true } }>,
-  ): Invoice {
-    const activeLines = [...invoice.lines]
-      .filter((l) => l.isActive)
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-
-    return {
-      id: invoice.id,
-      invoiceNumber: invoice.invoiceNumber,
-      studentId: invoice.studentId ?? undefined,
-      recipientName: invoice.recipientName,
-      recipientEmail: invoice.recipientEmail ?? undefined,
-      recipientPhone: invoice.recipientPhone ?? undefined,
-      recipientAddress: invoice.recipientAddress ?? undefined,
-      issueDate: invoice.issueDate,
-      dueDate: invoice.dueDate,
-      publicNotes: invoice.publicNotes ?? undefined,
-      privateNotes: invoice.privateNotes ?? undefined,
-      status: invoice.status,
-      subtotal: invoice.subtotal,
-      totalDiscount: invoice.totalDiscount,
-      total: invoice.total,
-      paidAmount: invoice.paidAmount,
-      balance: invoice.balance,
-      lines: activeLines.map((line) => ({
-        id: line.id,
-        invoiceId: line.invoiceId,
-        type: line.type,
-        chargeId: line.chargeId ?? undefined,
-        description: line.description,
-        originalAmount: line.originalAmount,
-        discountType: line.discountType ?? undefined,
-        discountValue: line.discountValue ?? undefined,
-        discountReason: line.discountReason ?? undefined,
-        finalAmount: line.finalAmount,
-        isActive: line.isActive,
-        createdAt: line.createdAt,
-        updatedAt: line.updatedAt,
-      })),
-      createdAt: invoice.createdAt,
-      updatedAt: invoice.updatedAt,
-    };
   }
 }

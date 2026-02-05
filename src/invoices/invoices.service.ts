@@ -4,14 +4,13 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { StudentsService } from "../students/students.service";
 import { CreateInvoiceInput } from "./dto/create-invoice.input";
 import { CreateInvoiceLineInput } from "./dto/create-invoice-line.input";
 import { AddInvoiceLineInput } from "./dto/add-invoice-line.input";
 import { UpdateInvoiceLineInput } from "./dto/update-invoice-line.input";
 import { InvoicesFilterInput } from "./dto/findAll-filter.input";
 import { Invoice } from "./entities/invoice.entity";
-import { InvoiceLine } from "./entities/invoice-line.entity";
-import { Payment } from "../payments/entities/payment.entity";
 import {
   calculateFinalAmount,
   calculateInvoiceTotals,
@@ -20,16 +19,29 @@ import {
 import { ChargeStatus, InvoiceStatus, Prisma } from "@prisma/client";
 import { InvoiceLineType } from "./enums/invoice-line-type.enum";
 import { DiscountType } from "./enums/discount-type.enum";
-import { LineDataToCreate, InvoiceWithLines } from "./types/invoice.types";
+import { LineDataToCreate } from "./types/invoice.types";
+import {
+  assertFound,
+  assertOwnership,
+} from "../common/utils/tenant-validation";
+import {
+  mapInvoiceToEntity,
+} from "./utils/invoice-mapper.util";
 
 @Injectable()
 export class InvoicesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private studentsService: StudentsService,
+  ) {}
 
   /**
    * Crea una nueva factura con sus líneas.
    */
-  async createInvoice(input: CreateInvoiceInput): Promise<Invoice> {
+  async createInvoice(
+    input: CreateInvoiceInput,
+    academyId: string,
+  ): Promise<Invoice> {
     const {
       studentId,
       recipientName,
@@ -46,16 +58,14 @@ export class InvoicesService {
     if (!lineInputs || lineInputs.length === 0) {
       throw new BadRequestException("Invoice must have at least 1 line");
     }
+
+    // Ownership: validar que student pertenece a la academy
+    let studentAcademyId = academyId;
     if (studentId) {
-      const student = await this.prisma.student.findUnique({
-        where: { id: studentId },
-      });
-      if (!student) {
-        throw new NotFoundException(
-          `Estudiante con ID ${studentId} no encontrado`,
-        );
-      }
+      const student = await this.studentsService.findOne(studentId, academyId);
+      studentAcademyId = student.academyId;
     }
+
     const chargeLineInputs = lineInputs.filter(
       (l) => l.type === InvoiceLineType.CHARGE,
     );
@@ -84,7 +94,7 @@ export class InvoicesService {
           `Cargos no encontrados o no disponibles: ${missingIds.join(", ")}`,
         );
       }
-      // T14 - Validar que charges pertenezcan al student (si hay studentId)
+      // T14 - Integrity: validar que charges pertenezcan al student
       if (studentId) {
         const invalidCharges = charges.filter((c) => c.studentId !== studentId);
         if (invalidCharges.length > 0) {
@@ -137,6 +147,7 @@ export class InvoicesService {
       const invoice = await tx.invoice.create({
         data: {
           studentId,
+          academyId: studentAcademyId,
           recipientName,
           recipientEmail,
           recipientPhone,
@@ -165,21 +176,25 @@ export class InvoicesService {
       }
       return invoice;
     });
-    return this.mapInvoiceToEntity(result);
+    return mapInvoiceToEntity(result);
   }
 
   /**
    * Agrega una línea a una factura existente.
    */
-  async addInvoiceLine(input: AddInvoiceLineInput): Promise<Invoice> {
+  async addInvoiceLine(
+    input: AddInvoiceLineInput,
+    academyId: string,
+  ): Promise<Invoice> {
     const { invoiceId, line: lineInput } = input;
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
       include: { lines: true, payments: true },
     });
-    if (!invoice) {
-      throw new NotFoundException(`Factura con ID ${invoiceId} no encontrada`);
-    }
+
+    // Ownership: validar que invoice pertenece a la academy
+    assertOwnership(invoice, academyId, "Invoice");
+
     if (invoice.status === InvoiceStatus.VOID) {
       throw new BadRequestException(
         "No se pueden agregar líneas a una factura anulada",
@@ -201,17 +216,14 @@ export class InvoicesService {
           where: { id: lineInput.chargeId },
           include: { fee: true },
         });
-        if (!charge) {
-          throw new NotFoundException(
-            `Cargo ${lineInput.chargeId} no encontrado`,
-          );
-        }
+        assertFound(charge, "Charge");
+
         if (charge.status !== ChargeStatus.PENDING) {
           throw new BadRequestException(
             `El cargo ${lineInput.chargeId} no está disponible (status: ${charge.status})`,
           );
         }
-        // Validar que el charge pertenezca al student de la factura
+        // Integrity: validar que el charge pertenezca al student de la factura
         if (invoice.studentId && charge.studentId !== invoice.studentId) {
           throw new BadRequestException(
             `Charge does not belong to student: ${charge.id}`,
@@ -264,13 +276,16 @@ export class InvoicesService {
       });
       return updatedInvoice;
     });
-    return this.mapInvoiceToEntity(result);
+    return mapInvoiceToEntity(result);
   }
 
   /**
    * Actualiza el descuento de una línea.
    */
-  async updateInvoiceLine(input: UpdateInvoiceLineInput): Promise<Invoice> {
+  async updateInvoiceLine(
+    input: UpdateInvoiceLineInput,
+    academyId: string,
+  ): Promise<Invoice> {
     const { lineId, discountType, discountValue, discountReason } = input;
     const line = await this.prisma.invoiceLine.findUnique({
       where: { id: lineId },
@@ -279,6 +294,10 @@ export class InvoicesService {
     if (!line) {
       throw new NotFoundException(`Línea con ID ${lineId} no encontrada`);
     }
+
+    // Ownership: validar que invoice pertenece a la academy
+    assertOwnership(line.invoice, academyId, "Invoice");
+
     if (!line.isActive) {
       throw new BadRequestException("No se puede editar una línea inactiva");
     }
@@ -334,13 +353,13 @@ export class InvoicesService {
       });
       return updatedInvoice;
     });
-    return this.mapInvoiceToEntity(result);
+    return mapInvoiceToEntity(result);
   }
 
   /**
    * Remueve una línea de una factura (isActive = false).
    */
-  async removeInvoiceLine(lineId: string): Promise<Invoice> {
+  async removeInvoiceLine(lineId: string, academyId: string): Promise<Invoice> {
     const line = await this.prisma.invoiceLine.findUnique({
       where: { id: lineId },
       include: { invoice: { include: { payments: true } } },
@@ -348,6 +367,10 @@ export class InvoicesService {
     if (!line) {
       throw new NotFoundException(`Línea con ID ${lineId} no encontrada`);
     }
+
+    // Ownership: validar que invoice pertenece a la academy
+    assertOwnership(line.invoice, academyId, "Invoice");
+
     if (!line.isActive) {
       throw new BadRequestException("La línea ya está inactiva");
     }
@@ -392,21 +415,22 @@ export class InvoicesService {
       });
       return updatedInvoice;
     });
-    return this.mapInvoiceToEntity(result);
+    return mapInvoiceToEntity(result);
   }
 
   /**
    * Anula una factura (soft delete).
    * También anula todos los payments y créditos asociados.
    */
-  async voidInvoice(invoiceId: string): Promise<Invoice> {
+  async voidInvoice(invoiceId: string, academyId: string): Promise<Invoice> {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
       include: { lines: true, payments: true },
     });
-    if (!invoice) {
-      throw new NotFoundException(`Factura con ID ${invoiceId} no encontrada`);
-    }
+
+    // Ownership: validar que invoice pertenece a la academy
+    assertOwnership(invoice, academyId, "Invoice");
+
     if (invoice.status === InvoiceStatus.VOID) {
       throw new BadRequestException("La factura ya está anulada");
     }
@@ -470,33 +494,38 @@ export class InvoicesService {
       });
       return updatedInvoice;
     });
-    return this.mapInvoiceToEntity(result);
+    return mapInvoiceToEntity(result);
   }
 
   /**
    * Obtiene una factura por ID.
    */
-  async findById(invoiceId: string): Promise<Invoice> {
+  async findById(invoiceId: string, academyId: string): Promise<Invoice> {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
       include: { lines: true, payments: true },
     });
-    if (!invoice) {
-      throw new NotFoundException(`Factura con ID ${invoiceId} no encontrada`);
-    }
-    return this.mapInvoiceToEntity(invoice);
+
+    // Ownership: validar que invoice pertenece a la academy
+    assertOwnership(invoice, academyId, "Invoice");
+
+    return mapInvoiceToEntity(invoice);
   }
 
   /**
    * Lista facturas con filtros opcionales y paginación.
    */
-  async findAll(filters?: InvoicesFilterInput) {
+  async findAll(academyId: string, filters?: InvoicesFilterInput) {
     const pageInput: number = filters?.page ?? 1;
     const limitInput: number = filters?.limit ?? 10;
     const page: number = Math.max(1, pageInput);
     const limit: number = Math.min(Math.max(1, limitInput), 100);
     const skip: number = (page - 1) * limit;
-    const where: Prisma.InvoiceWhereInput = {};
+
+    const where: Prisma.InvoiceWhereInput = {
+      academyId, // Filtrar por academy
+    };
+
     if (filters?.studentId) {
       where.studentId = filters.studentId;
     }
@@ -524,7 +553,7 @@ export class InvoicesService {
     ]);
     const totalPages = Math.ceil(total / limit);
     return {
-      data: invoices.map((inv) => this.mapInvoiceToEntity(inv)),
+      data: invoices.map((inv) => mapInvoiceToEntity(inv)),
       meta: {
         total,
         page,
@@ -590,67 +619,6 @@ export class InvoicesService {
       discountReason: lineInput.discountReason ?? null,
       finalAmount,
       isActive: true,
-    };
-  }
-
-  /**
-   * Mapea un invoice de Prisma a la entidad GraphQL.
-   */
-  private mapInvoiceToEntity(invoice: InvoiceWithLines): Invoice {
-    if (!invoice) {
-      throw new NotFoundException("Factura no encontrada");
-    }
-    const activeLines = [...invoice.lines]
-      .filter((l) => l.isActive)
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-    return {
-      id: invoice.id,
-      invoiceNumber: invoice.invoiceNumber,
-      studentId: invoice.studentId ?? undefined,
-      recipientName: invoice.recipientName,
-      recipientEmail: invoice.recipientEmail ?? undefined,
-      recipientPhone: invoice.recipientPhone ?? undefined,
-      recipientAddress: invoice.recipientAddress ?? undefined,
-      issueDate: invoice.issueDate,
-      dueDate: invoice.dueDate,
-      publicNotes: invoice.publicNotes ?? undefined,
-      privateNotes: invoice.privateNotes ?? undefined,
-      status: invoice.status,
-      subtotal: invoice.subtotal,
-      totalDiscount: invoice.totalDiscount,
-      total: invoice.total,
-      paidAmount: invoice.paidAmount,
-      balance: invoice.balance,
-      lines: activeLines.map((line) => this.mapLineToEntity(line)),
-      payments: (invoice.payments ?? []) as Payment[],
-      createdAt: invoice.createdAt,
-      updatedAt: invoice.updatedAt,
-    };
-  }
-
-  /**
-   * Mapea una línea de Prisma a la entidad GraphQL.
-   */
-  private mapLineToEntity(
-    line: InvoiceWithLines["lines"][number],
-  ): InvoiceLine {
-    if (!line) {
-      throw new NotFoundException("Línea no encontrada");
-    }
-    return {
-      id: line.id,
-      invoiceId: line.invoiceId,
-      type: line.type,
-      chargeId: line.chargeId ?? undefined,
-      description: line.description,
-      originalAmount: line.originalAmount,
-      discountType: line.discountType ?? undefined,
-      discountValue: line.discountValue ?? undefined,
-      discountReason: line.discountReason ?? undefined,
-      finalAmount: line.finalAmount,
-      isActive: line.isActive,
-      createdAt: line.createdAt,
-      updatedAt: line.updatedAt,
     };
   }
 }

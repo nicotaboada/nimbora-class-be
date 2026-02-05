@@ -11,6 +11,77 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// ============================================================================
+// ACADEMY & USER MODULE
+// ============================================================================
+
+enum AcademyStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum UserRole {
+  ADMIN    // Super admin
+  OWNER    // Dueño de academia
+  STAFF    // Personal administrativo
+  TEACHER  // Profesor
+  STUDENT  // Estudiante que puede loguearse
+}
+
+model Academy {
+  id          String        @id @default(uuid())
+  name        String
+  slug        String        @unique
+  status      AcademyStatus @default(ACTIVE)
+  
+  country     String        // "AR", "MX"
+  currency    String        // "ARS", "USD"
+  timezone    String        // "America/Argentina/Buenos_Aires"
+  
+  email       String?
+  phone       String?
+  address     String?
+  
+  ownerUserId String
+  
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  users       User[]
+  students    Student[]
+  fees        Fee[]
+  invoices    Invoice[]
+}
+
+model User {
+  id              String    @id @default(uuid())
+  supabaseUserId  String    @unique  // auth.users.id de Supabase
+  
+  academyId       String
+  academy         Academy   @relation(fields: [academyId], references: [id])
+  
+  role            UserRole
+  
+  firstName       String
+  lastName        String
+  email           String
+  phone           String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relación opcional con Student (si el user es un estudiante)
+  student         Student?
+  
+  @@index([supabaseUserId])
+  @@index([academyId])
+}
+
+// ============================================================================
+// STUDENTS MODULE
+// ============================================================================
+
 enum StudentStatus {
   ENABLED
   DISABLED
@@ -23,12 +94,26 @@ model Student {
   email       String        @unique
   phoneNumber String?
   status      StudentStatus @default(ENABLED)
+  
+  academyId   String
+  academy     Academy       @relation(fields: [academyId], references: [id])
+  
+  // Link opcional a User (cuando el estudiante puede loguearse)
+  userId      String?       @unique
+  user        User?         @relation(fields: [userId], references: [id])
+  
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   charges     Charge[]
   invoices    Invoice[]
   credits     StudentCredit[]
+  
+  @@index([academyId])
 }
+
+// ============================================================================
+// FEES MODULE
+// ============================================================================
 
 enum FeeType {
   ONE_OFF
@@ -55,10 +140,20 @@ model Fee {
   cost        Int
   occurrences Int?
   period      FeePeriod?
+  
+  academyId   String
+  academy     Academy    @relation(fields: [academyId], references: [id])
+  
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   charges     Charge[]
+  
+  @@index([academyId])
 }
+
+// ============================================================================
+// CHARGES MODULE
+// ============================================================================
 
 enum ChargeStatus {
   PENDING
@@ -122,6 +217,10 @@ model Invoice {
   recipientPhone   String?
   recipientAddress String?
 
+  // Multi-tenancy
+  academyId        String
+  academy          Academy       @relation(fields: [academyId], references: [id])
+
   issueDate        DateTime
   dueDate          DateTime
   publicNotes      String?
@@ -145,6 +244,7 @@ model Invoice {
   generatedCredits StudentCredit[]
 
   @@index([studentId])
+  @@index([academyId])
   @@index([status])
 }
 

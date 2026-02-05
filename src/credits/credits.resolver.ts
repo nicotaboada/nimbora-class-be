@@ -1,8 +1,13 @@
 import { Resolver, Query, Args, ID, Int } from "@nestjs/graphql";
+import { UseGuards } from "@nestjs/common";
 import { CreditsService } from "./credits.service";
 import { StudentCredit } from "./entities/student-credit.entity";
+import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { User } from "../users/entities/user.entity";
 
 @Resolver(() => StudentCredit)
+@UseGuards(SupabaseAuthGuard)
 export class CreditsResolver {
   constructor(private readonly creditsService: CreditsService) {}
 
@@ -15,8 +20,9 @@ export class CreditsResolver {
   })
   async findByStudent(
     @Args("studentId", { type: () => ID }) studentId: string,
+    @CurrentUser() user: User,
   ): Promise<StudentCredit[]> {
-    return this.creditsService.findByStudent(studentId);
+    return this.creditsService.findByStudent(studentId, user.academyId);
   }
 
   /**
@@ -28,7 +34,11 @@ export class CreditsResolver {
   })
   async getCreditBalance(
     @Args("studentId", { type: () => ID }) studentId: string,
+    @CurrentUser() user: User,
   ): Promise<number> {
-    return this.creditsService.getStudentCreditBalance(studentId);
+    return this.creditsService.getStudentCreditBalance(
+      studentId,
+      user.academyId,
+    );
   }
 }

@@ -1,4 +1,5 @@
 import { Resolver, Query, Mutation, Args, Int } from "@nestjs/graphql";
+import { UseGuards } from "@nestjs/common";
 import { StudentsService } from "./students.service";
 import { Student } from "./entities/student.entity";
 import { CreateStudentInput } from "./dto/create-student.input";
@@ -6,25 +7,34 @@ import { UpdateStudentInput } from "./dto/update-student.input";
 import { PaginatedStudents } from "./dto/paginated-students.output";
 import { StudentStats } from "./entities/student-stats.entity";
 import { StudentStatus } from "./entities/student.entity";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
+import { User } from "../users/entities/user.entity";
 
 @Resolver(() => Student)
+@UseGuards(SupabaseAuthGuard)
 export class StudentsResolver {
   constructor(private readonly studentsService: StudentsService) {}
 
   @Mutation(() => Student)
   createStudent(
     @Args("createStudentInput") createStudentInput: CreateStudentInput,
+    @CurrentUser() user: User,
   ) {
-    return this.studentsService.create(createStudentInput);
+    return this.studentsService.create(createStudentInput, user.academyId);
   }
 
   @Query(() => Student, { name: "student" })
-  findOne(@Args("id", { type: () => String }) id: string) {
-    return this.studentsService.findOne(id);
+  findOne(
+    @Args("id", { type: () => String }) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.studentsService.findOne(id, user.academyId);
   }
 
   @Query(() => PaginatedStudents, { name: "students" })
   findAll(
+    @CurrentUser() user: User,
     @Args("page", { type: () => Int, nullable: true, defaultValue: 1 })
     page: number,
     @Args("limit", { type: () => Int, nullable: true, defaultValue: 10 })
@@ -33,23 +43,33 @@ export class StudentsResolver {
     @Args("status", { type: () => StudentStatus, nullable: true })
     status?: StudentStatus,
   ) {
-    return this.studentsService.findAll(page, limit, search, status);
+    return this.studentsService.findAll(
+      user.academyId,
+      page,
+      limit,
+      search,
+      status,
+    );
   }
 
   @Mutation(() => Student)
   updateStudent(
     @Args("updateStudentInput") updateStudentInput: UpdateStudentInput,
+    @CurrentUser() user: User,
   ) {
-    return this.studentsService.update(updateStudentInput);
+    return this.studentsService.update(updateStudentInput, user.academyId);
   }
 
   @Mutation(() => Student)
-  removeStudent(@Args("id", { type: () => String }) id: string) {
-    return this.studentsService.remove(id);
+  removeStudent(
+    @Args("id", { type: () => String }) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.studentsService.remove(id, user.academyId);
   }
 
   @Query(() => StudentStats, { name: "studentStats" })
-  getStats() {
-    return this.studentsService.getStats();
+  getStats(@CurrentUser() user: User) {
+    return this.studentsService.getStats(user.academyId);
   }
 }

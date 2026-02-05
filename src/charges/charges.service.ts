@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, BadRequestException } from "@nestjs/common";
 import { parse } from "date-fns";
 import { PrismaService } from "../prisma/prisma.service";
+import { StudentsService } from "../students/students.service";
+import { FeesService } from "../fees/fees.service";
 import { AssignFeeInput } from "./dto/assign-fee.input";
 import { ChargesForInvoiceInput } from "./dto/charges-for-invoice.input";
 import {
@@ -9,33 +11,47 @@ import {
 } from "./utils/charge-date-calculator";
 import { ChargeStatus } from "@prisma/client";
 import { Charge } from "./entities/charge.entity";
+import { mapStudentToEntity } from "../students/utils/student-mapper.util";
 
 @Injectable()
 export class ChargesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private studentsService: StudentsService,
+    private feesService: FeesService,
+  ) {}
 
   /**
    * Asigna un fee a múltiples estudiantes, generando todos los cargos correspondientes.
    */
-  async assignFeeToStudents(input: AssignFeeInput): Promise<{
+  async assignFeeToStudents(
+    input: AssignFeeInput,
+    academyId: string,
+  ): Promise<{
     chargesCreated: number;
     charges: Charge[];
   }> {
     const { feeId, studentIds, startMonth } = input;
-    const fee = await this.prisma.fee.findUnique({ where: { id: feeId } });
-    if (!fee) {
-      throw new NotFoundException(`Fee con ID ${feeId} no encontrado`);
-    }
-    const students = await this.prisma.student.findMany({
-      where: { id: { in: studentIds } },
+
+    // Ownership: validar que fee pertenece a la academy
+    const fee = await this.feesService.findOne(feeId, academyId);
+
+    // Integrity: validar que TODOS los students pertenecen a la academy con un solo query
+    const prismaStudents = await this.prisma.student.findMany({
+      where: {
+        id: { in: studentIds },
+        academyId,
+      },
     });
-    if (students.length !== studentIds.length) {
-      const foundIds = new Set(students.map((s) => s.id));
-      const missingIds = studentIds.filter((id) => !foundIds.has(id));
-      throw new NotFoundException(
-        `Estudiantes no encontrados: ${missingIds.join(", ")}`,
+
+    if (prismaStudents.length !== studentIds.length) {
+      throw new BadRequestException(
+        "Algunos estudiantes no pertenecen a esta academia",
       );
     }
+
+    const students = prismaStudents.map((s) => mapStudentToEntity(s));
+
     const currentDate = new Date();
     const chargeDates = calculateChargeDates(fee, startMonth, currentDate);
     const chargesData = students.flatMap((student) =>
@@ -72,7 +88,13 @@ export class ChargesService {
   /**
    * Obtiene los IDs de estudiantes que ya tienen un fee asignado.
    */
-  async findStudentIdsWithFee(feeId: string): Promise<string[]> {
+  async findStudentIdsWithFee(
+    feeId: string,
+    academyId: string,
+  ): Promise<string[]> {
+    // Ownership: validar que fee pertenece a la academy
+    await this.feesService.findOne(feeId, academyId);
+
     const charges = await this.prisma.charge.findMany({
       where: { feeId },
       select: { studentId: true },
@@ -84,7 +106,10 @@ export class ChargesService {
   /**
    * Obtiene todos los cargos de un estudiante.
    */
-  async findByStudent(studentId: string): Promise<Charge[]> {
+  async findByStudent(studentId: string, academyId: string): Promise<Charge[]> {
+    // Ownership: validar que student pertenece a la academy
+    await this.studentsService.findOne(studentId, academyId);
+
     const charges = await this.prisma.charge.findMany({
       where: { studentId },
       orderBy: { issueDate: "asc" },
@@ -99,8 +124,13 @@ export class ChargesService {
    */
   async findChargesForInvoice(
     input: ChargesForInvoiceInput,
+    academyId: string,
   ): Promise<{ charges: Charge[] }> {
     const { studentId, invoiceMonth, includePastDue } = input;
+
+    // Ownership: validar que student pertenece a la academy
+    await this.studentsService.findOne(studentId, academyId);
+
     const currentDate = new Date();
     const invoiceMonthStart = parse(invoiceMonth, "yyyy-MM", new Date());
     const currentMonthChargesRaw = await this.prisma.charge.findMany({

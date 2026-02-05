@@ -2,14 +2,17 @@ import { Module } from "@nestjs/common";
 import { GraphQLModule } from "@nestjs/graphql";
 import { ApolloDriver, ApolloDriverConfig } from "@nestjs/apollo";
 import * as path from "node:path";
-import { PrismaService } from "./prisma/prisma.service";
+import { PrismaModule } from "./prisma/prisma.module";
 import { StudentsModule } from "./students/students.module";
 import { FeesModule } from "./fees/fees.module";
 import { ChargesModule } from "./charges/charges.module";
 import { InvoicesModule } from "./invoices/invoices.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { CreditsModule } from "./credits/credits.module";
-import { AfipModule } from "./afip/afip.module";
+// import { AfipModule } from "./afip/afip.module";
+import { AcademiesModule } from "./academies/academies.module";
+import { UsersModule } from "./users/users.module";
+import { AuthModule } from "./auth/auth.module";
 
 @Module({
   imports: [
@@ -19,6 +22,10 @@ import { AfipModule } from "./afip/afip.module";
       sortSchema: true,
       introspection: true,
     }),
+    PrismaModule,
+    AcademiesModule,
+    UsersModule,
+    AuthModule,
     StudentsModule,
     FeesModule,
     ChargesModule,
@@ -26,6 +33,5 @@ import { AfipModule } from "./afip/afip.module";
     PaymentsModule,
     CreditsModule,
   ],
-  providers: [PrismaService],
 })
 export class AppModule {}

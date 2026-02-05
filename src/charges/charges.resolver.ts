@@ -1,12 +1,17 @@
 import { Resolver, Mutation, Query, Args } from "@nestjs/graphql";
+import { UseGuards } from "@nestjs/common";
 import { ChargesService } from "./charges.service";
 import { Charge } from "./entities/charge.entity";
 import { AssignFeeOutput } from "./dto/assign-fee.output";
 import { AssignFeeInput } from "./dto/assign-fee.input";
 import { ChargesForInvoiceInput } from "./dto/charges-for-invoice.input";
 import { ChargesForInvoiceOutput } from "./dto/charges-for-invoice.output";
+import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { User } from "../users/entities/user.entity";
 
 @Resolver(() => Charge)
+@UseGuards(SupabaseAuthGuard)
 export class ChargesResolver {
   constructor(private readonly chargesService: ChargesService) {}
 
@@ -18,8 +23,9 @@ export class ChargesResolver {
   })
   async assignFeeToStudents(
     @Args("input") input: AssignFeeInput,
+    @CurrentUser() user: User,
   ): Promise<AssignFeeOutput> {
-    return this.chargesService.assignFeeToStudents(input);
+    return this.chargesService.assignFeeToStudents(input, user.academyId);
   }
 
   /**
@@ -28,8 +34,11 @@ export class ChargesResolver {
   @Query(() => [String], {
     description: "Obtiene IDs de estudiantes que ya tienen un fee asignado",
   })
-  async studentIdsWithFee(@Args("feeId") feeId: string): Promise<string[]> {
-    return this.chargesService.findStudentIdsWithFee(feeId);
+  async studentIdsWithFee(
+    @Args("feeId") feeId: string,
+    @CurrentUser() user: User,
+  ): Promise<string[]> {
+    return this.chargesService.findStudentIdsWithFee(feeId, user.academyId);
   }
 
   /**
@@ -40,8 +49,9 @@ export class ChargesResolver {
   })
   async chargesByStudent(
     @Args("studentId") studentId: string,
+    @CurrentUser() user: User,
   ): Promise<Charge[]> {
-    return this.chargesService.findByStudent(studentId);
+    return this.chargesService.findByStudent(studentId, user.academyId);
   }
 
   /**
@@ -53,7 +63,11 @@ export class ChargesResolver {
   })
   async chargesForInvoice(
     @Args("input") input: ChargesForInvoiceInput,
+    @CurrentUser() user: User,
   ): Promise<ChargesForInvoiceOutput> {
-    return await this.chargesService.findChargesForInvoice(input);
+    return await this.chargesService.findChargesForInvoice(
+      input,
+      user.academyId,
+    );
   }
 }

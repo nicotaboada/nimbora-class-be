@@ -2,6 +2,29 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+type Academy {
+  address: String
+  country: String!
+  createdAt: DateTime!
+  currency: String!
+  email: String
+  id: String!
+  name: String!
+  ownerUserId: String!
+  phone: String
+  slug: String!
+  status: AcademyStatus!
+  timezone: String!
+  updatedAt: DateTime!
+}
+
+"""Estado de la academia"""
+enum AcademyStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
 input AddInvoiceLineInput {
   """ID de la factura"""
   invoiceId: String!
@@ -126,6 +149,19 @@ type ChargesForInvoiceOutput {
   charges: [Charge!]!
 }
 
+input CreateAcademyInput {
+  address: String
+  country: String!
+  currency: String!
+  email: String
+  name: String!
+  ownerUserId: String!
+  phone: String
+  slug: String!
+  status: AcademyStatus! = ACTIVE
+  timezone: String!
+}
+
 input CreateInvoiceInput {
   """Fecha de vencimiento"""
   dueDate: DateTime!
@@ -200,6 +236,16 @@ input CreateStudentInput {
   firstName: String!
   lastName: String!
   phoneNumber: String
+}
+
+input CreateUserInput {
+  academyId: String!
+  email: String!
+  firstName: String!
+  lastName: String!
+  phone: String
+  role: UserRole!
+  supabaseUserId: String!
 }
 
 """Estado del crédito"""
@@ -404,6 +450,7 @@ type Mutation {
 
   """Asigna un fee a estudiantes"""
   assignFeeToStudents(input: AssignFeeInput!): AssignFeeOutput!
+  createAcademy(input: CreateAcademyInput!): Academy!
 
   """Crea una nueva factura"""
   createInvoice(input: CreateInvoiceInput!): Invoice!
@@ -411,11 +458,15 @@ type Mutation {
   createOneOffFee(input: CreateOneOffFeeInput!): Fee!
   createPeriodicFee(input: CreatePeriodicFeeInput!): Fee!
   createStudent(createStudentInput: CreateStudentInput!): Student!
+  createUser(input: CreateUserInput!): User!
   deleteFee(id: ID!): Fee!
+  removeAcademy(id: String!): Academy!
 
   """Remueve una línea de una factura"""
   removeInvoiceLine(lineId: ID!): Invoice!
   removeStudent(id: String!): Student!
+  removeUser(id: String!): User!
+  updateAcademy(input: UpdateAcademyInput!): Academy!
 
   """Actualiza el descuento de una línea"""
   updateInvoiceLine(input: UpdateInvoiceLineInput!): Invoice!
@@ -423,6 +474,7 @@ type Mutation {
   updateOneOffFee(input: UpdateOneOffFeeInput!): Fee!
   updatePeriodicFee(input: UpdatePeriodicFeeInput!): Fee!
   updateStudent(updateStudentInput: UpdateStudentInput!): Student!
+  updateUser(input: UpdateUserInput!): User!
 
   """Anula una factura (soft delete)"""
   voidInvoice(invoiceId: ID!): Invoice!
@@ -550,6 +602,10 @@ enum PaymentType {
 }
 
 type Query {
+  academies: [Academy!]!
+  academy(id: String!): Academy
+  academyBySlug(slug: String!): Academy
+
   """Obtiene todos los cargos de un estudiante"""
   chargesByStudent(studentId: String!): [Charge!]!
 
@@ -563,6 +619,9 @@ type Query {
 
   """Lista facturas paginada"""
   invoices(filter: InvoicesFilterInput): PaginatedInvoices!
+
+  """Obtiene el usuario actual autenticado"""
+  me: User!
 
   """Obtiene un pago por ID"""
   payment(id: ID!): Payment!
@@ -581,6 +640,9 @@ type Query {
   studentIdsWithFee(feeId: String!): [String!]!
   studentStats: StudentStats!
   students(limit: Int = 10, page: Int = 1, search: String, status: StudentStatus): PaginatedStudents!
+  user(id: String!): User
+  userBySupabaseId(supabaseUserId: String!): User
+  users: [User!]!
 }
 
 type Student {
@@ -639,6 +701,20 @@ enum StudentStatus {
   ENABLED
 }
 
+input UpdateAcademyInput {
+  address: String
+  country: String
+  currency: String
+  email: String
+  id: String!
+  name: String
+  ownerUserId: String
+  phone: String
+  slug: String
+  status: AcademyStatus = ACTIVE
+  timezone: String
+}
+
 input UpdateInvoiceLineInput {
   """Razón del descuento"""
   discountReason: String
@@ -682,6 +758,40 @@ input UpdateStudentInput {
   lastName: String
   phoneNumber: String
   status: StudentStatus
+}
+
+input UpdateUserInput {
+  academyId: String
+  email: String
+  firstName: String
+  id: String!
+  lastName: String
+  phone: String
+  role: UserRole
+  supabaseUserId: String
+}
+
+type User {
+  academy: Academy
+  academyId: String!
+  createdAt: DateTime!
+  email: String!
+  firstName: String!
+  id: String!
+  lastName: String!
+  phone: String
+  role: UserRole!
+  supabaseUserId: String!
+  updatedAt: DateTime!
+}
+
+"""Rol del usuario en el sistema"""
+enum UserRole {
+  ADMIN
+  OWNER
+  STAFF
+  STUDENT
+  TEACHER
 }
 
 """Input para anular un pago"""

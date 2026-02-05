@@ -11,17 +11,19 @@ import { UpdateOneOffFeeInput } from "./dto/update-one-off-fee.input";
 import { UpdateMonthlyFeeInput } from "./dto/update-monthly-fee.input";
 import { UpdatePeriodicFeeInput } from "./dto/update-periodic-fee.input";
 import { FeeType as PrismaFeeType, ChargeStatus } from "@prisma/client";
+import { assertOwnership } from "../common/utils/tenant-validation";
 
 @Injectable()
 export class FeesService {
   constructor(private prisma: PrismaService) {}
 
-  async createOneOffFee(input: CreateOneOffFeeInput) {
+  async createOneOffFee(input: CreateOneOffFeeInput, academyId: string) {
     const fee = await this.prisma.fee.create({
       data: {
         description: input.description,
         startDate: input.startDate,
         cost: input.cost,
+        academyId,
         type: PrismaFeeType.ONE_OFF,
         occurrences: 1,
         period: null,
@@ -31,13 +33,14 @@ export class FeesService {
     return { ...fee, total };
   }
 
-  async createMonthlyFee(input: CreateMonthlyFeeInput) {
+  async createMonthlyFee(input: CreateMonthlyFeeInput, academyId: string) {
     const fee = await this.prisma.fee.create({
       data: {
         description: input.description,
         startDate: input.startDate,
         cost: input.cost,
         occurrences: input.occurrences,
+        academyId,
         type: PrismaFeeType.MONTHLY,
         period: null,
       },
@@ -46,13 +49,14 @@ export class FeesService {
     return { ...fee, total };
   }
 
-  async createPeriodicFee(input: CreatePeriodicFeeInput) {
+  async createPeriodicFee(input: CreatePeriodicFeeInput, academyId: string) {
     const fee = await this.prisma.fee.create({
       data: {
         description: input.description,
         startDate: input.startDate,
         cost: input.cost,
         occurrences: input.occurrences,
+        academyId,
         type: PrismaFeeType.PERIODIC,
         period: input.period,
       },
@@ -61,25 +65,26 @@ export class FeesService {
     return { ...fee, total };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, academyId: string) {
     const fee = await this.prisma.fee.findUnique({
       where: { id },
     });
-    if (!fee) {
-      throw new NotFoundException(`Fee con ID ${id} no encontrado`);
-    }
+
+    assertOwnership(fee, academyId, "Fee");
+
     const total = this.calculateTotal(fee.type, fee.cost, fee.occurrences);
     return { ...fee, total };
   }
 
-  async findAll(page = 1, limit = 10) {
+  async findAll(academyId: string, page = 1, limit = 10) {
     const validPage = Math.max(1, page);
     const validLimit = Math.min(Math.max(1, limit), 100);
     const skip = (validPage - 1) * validLimit;
     const take = validLimit;
     const [total, data] = await Promise.all([
-      this.prisma.fee.count(),
+      this.prisma.fee.count({ where: { academyId } }),
       this.prisma.fee.findMany({
+        where: { academyId },
         skip,
         take,
         orderBy: { createdAt: "desc" },
@@ -102,9 +107,9 @@ export class FeesService {
     };
   }
 
-  async updateOneOffFee(input: UpdateOneOffFeeInput) {
+  async updateOneOffFee(input: UpdateOneOffFeeInput, academyId: string) {
     const { id, ...data } = input;
-    await this.findOne(id);
+    await this.findOne(id, academyId);
     const fee = await this.prisma.fee.update({
       where: { id },
       data,
@@ -113,9 +118,9 @@ export class FeesService {
     return { ...fee, total };
   }
 
-  async updateMonthlyFee(input: UpdateMonthlyFeeInput) {
+  async updateMonthlyFee(input: UpdateMonthlyFeeInput, academyId: string) {
     const { id, ...data } = input;
-    await this.findOne(id);
+    await this.findOne(id, academyId);
     const fee = await this.prisma.fee.update({
       where: { id },
       data,
@@ -124,9 +129,9 @@ export class FeesService {
     return { ...fee, total };
   }
 
-  async updatePeriodicFee(input: UpdatePeriodicFeeInput) {
+  async updatePeriodicFee(input: UpdatePeriodicFeeInput, academyId: string) {
     const { id, ...data } = input;
-    await this.findOne(id);
+    await this.findOne(id, academyId);
     const fee = await this.prisma.fee.update({
       where: { id },
       data,
@@ -135,8 +140,8 @@ export class FeesService {
     return { ...fee, total };
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, academyId: string) {
+    await this.findOne(id, academyId);
     // Verificar si hay cargos INVOICED
     const invoicedCharge = await this.prisma.charge.findFirst({
       where: { feeId: id, status: ChargeStatus.INVOICED },

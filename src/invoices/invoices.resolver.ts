@@ -1,4 +1,5 @@
 import { Resolver, Query, Mutation, Args, ID } from "@nestjs/graphql";
+import { UseGuards } from "@nestjs/common";
 import { InvoicesService } from "./invoices.service";
 import { Invoice } from "./entities/invoice.entity";
 import { CreateInvoiceInput } from "./dto/create-invoice.input";
@@ -6,8 +7,12 @@ import { AddInvoiceLineInput } from "./dto/add-invoice-line.input";
 import { UpdateInvoiceLineInput } from "./dto/update-invoice-line.input";
 import { InvoicesFilterInput } from "./dto/findAll-filter.input";
 import { PaginatedInvoices } from "./dto/paginated-invoices.output";
+import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { User } from "../users/entities/user.entity";
 
 @Resolver(() => Invoice)
+@UseGuards(SupabaseAuthGuard)
 export class InvoicesResolver {
   constructor(private readonly invoicesService: InvoicesService) {}
 
@@ -17,8 +22,9 @@ export class InvoicesResolver {
   @Mutation(() => Invoice, { description: "Crea una nueva factura" })
   async createInvoice(
     @Args("input") input: CreateInvoiceInput,
+    @CurrentUser() user: User,
   ): Promise<Invoice> {
-    return this.invoicesService.createInvoice(input);
+    return this.invoicesService.createInvoice(input, user.academyId);
   }
 
   /**
@@ -29,8 +35,9 @@ export class InvoicesResolver {
   })
   async addInvoiceLine(
     @Args("input") input: AddInvoiceLineInput,
+    @CurrentUser() user: User,
   ): Promise<Invoice> {
-    return this.invoicesService.addInvoiceLine(input);
+    return this.invoicesService.addInvoiceLine(input, user.academyId);
   }
 
   /**
@@ -41,8 +48,9 @@ export class InvoicesResolver {
   })
   async updateInvoiceLine(
     @Args("input") input: UpdateInvoiceLineInput,
+    @CurrentUser() user: User,
   ): Promise<Invoice> {
-    return this.invoicesService.updateInvoiceLine(input);
+    return this.invoicesService.updateInvoiceLine(input, user.academyId);
   }
 
   /**
@@ -51,8 +59,9 @@ export class InvoicesResolver {
   @Mutation(() => Invoice, { description: "Remueve una línea de una factura" })
   async removeInvoiceLine(
     @Args("lineId", { type: () => ID }) lineId: string,
+    @CurrentUser() user: User,
   ): Promise<Invoice> {
-    return this.invoicesService.removeInvoiceLine(lineId);
+    return this.invoicesService.removeInvoiceLine(lineId, user.academyId);
   }
 
   /**
@@ -61,8 +70,9 @@ export class InvoicesResolver {
   @Mutation(() => Invoice, { description: "Anula una factura (soft delete)" })
   async voidInvoice(
     @Args("invoiceId", { type: () => ID }) invoiceId: string,
+    @CurrentUser() user: User,
   ): Promise<Invoice> {
-    return this.invoicesService.voidInvoice(invoiceId);
+    return this.invoicesService.voidInvoice(invoiceId, user.academyId);
   }
 
   /**
@@ -72,8 +82,11 @@ export class InvoicesResolver {
     name: "invoice",
     description: "Obtiene una factura por ID",
   })
-  async findOne(@Args("id", { type: () => ID }) id: string): Promise<Invoice> {
-    return this.invoicesService.findById(id);
+  async findOne(
+    @Args("id", { type: () => ID }) id: string,
+    @CurrentUser() user: User,
+  ): Promise<Invoice> {
+    return this.invoicesService.findById(id, user.academyId);
   }
 
   /**
@@ -84,8 +97,9 @@ export class InvoicesResolver {
     description: "Lista facturas paginada",
   })
   async findAll(
+    @CurrentUser() user: User,
     @Args("filter", { nullable: true }) filter?: InvoicesFilterInput,
   ): Promise<PaginatedInvoices> {
-    return this.invoicesService.findAll(filter);
+    return this.invoicesService.findAll(user.academyId, filter);
   }
 }

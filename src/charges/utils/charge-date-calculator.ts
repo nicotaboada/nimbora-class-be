@@ -3,8 +3,10 @@ import {
   Fee,
   FeePeriod,
   FeeType,
+  ChargeStatus,
 } from "@prisma/client";
 import { Charge } from "../entities/charge.entity";
+import { ChargeInvoicingState } from "../enums/charge-invoicing-state.enum";
 import {
   addDays,
   addMonths,
@@ -230,13 +232,32 @@ export function isChargeOverdue(
 }
 
 /**
- * Mapea un Prisma Charge a la entidad Charge con isOverdue calculado.
+ * Mapea un Prisma Charge a la entidad Charge con campos computados.
+ * - isOverdue: si está vencido (dueDate < hoy y status === PENDING)
+ * - invoicingState: estado visual de facturación
+ * - invoiceId: extraído de invoiceLines activas si existe
  * Si el charge incluye el fee (via include), también mapea el objeto fee con id y description.
  */
 export function mapChargeToEntity(
-  charge: PrismaCharge & { fee?: Fee | null },
+  charge: PrismaCharge & {
+    fee?: Fee | null;
+    invoiceLines?: Array<{ invoiceId: string }>;
+  },
   currentDate: Date = new Date(),
 ): Charge {
+  let invoicingState: ChargeInvoicingState;
+  if (
+    charge.status === ChargeStatus.INVOICED ||
+    charge.status === ChargeStatus.PAID
+  ) {
+    invoicingState = ChargeInvoicingState.INVOICED;
+  } else if (charge.status === ChargeStatus.PENDING) {
+    invoicingState = isBefore(currentDate, charge.issueDate)
+      ? ChargeInvoicingState.PENDING
+      : ChargeInvoicingState.REQUIRES_INVOICING;
+  } else {
+    invoicingState = ChargeInvoicingState.PENDING;
+  }
   return {
     ...charge,
     fee: charge.fee
@@ -246,5 +267,7 @@ export function mapChargeToEntity(
         }
       : undefined,
     isOverdue: isChargeOverdue(charge.dueDate, charge.status, currentDate),
+    invoiceId: charge.invoiceLines?.[0]?.invoiceId ?? undefined,
+    invoicingState,
   };
 }

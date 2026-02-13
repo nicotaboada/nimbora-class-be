@@ -9,7 +9,9 @@ import { ChargesModule } from "./charges/charges.module";
 import { InvoicesModule } from "./invoices/invoices.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { CreditsModule } from "./credits/credits.module";
-// import { AfipModule } from "./afip/afip.module";
+import { AfipModule } from "./afip/afip.module";
+import { BillingProfilesModule } from "./billing-profiles/billing-profiles.module";
+import { FeatureFlagsModule } from "./feature-flags/feature-flags.module";
 import { AcademiesModule } from "./academies/academies.module";
 import { UsersModule } from "./users/users.module";
 import { AuthModule } from "./auth/auth.module";
@@ -32,6 +34,9 @@ import { AuthModule } from "./auth/auth.module";
     InvoicesModule,
     PaymentsModule,
     CreditsModule,
+    FeatureFlagsModule,
+    AfipModule,
+    BillingProfilesModule,
   ],
 })
 export class AppModule {}

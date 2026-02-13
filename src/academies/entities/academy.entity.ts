@@ -1,5 +1,6 @@
-import { ObjectType, Field } from '@nestjs/graphql';
-import { AcademyStatus } from '../enums/academy-status.enum';
+import { ObjectType, Field } from "@nestjs/graphql";
+import { AcademyStatus } from "../enums/academy-status.enum";
+import { AcademyFeature } from "../../feature-flags/entities/academy-feature.entity";
 
 @ObjectType()
 export class Academy {
@@ -35,6 +36,12 @@ export class Academy {
 
   @Field()
   ownerUserId: string;
+
+  @Field(() => [AcademyFeature], {
+    nullable: true,
+    description: "Feature flags de la academia",
+  })
+  features?: AcademyFeature[];
 
   @Field()
   createdAt: Date;

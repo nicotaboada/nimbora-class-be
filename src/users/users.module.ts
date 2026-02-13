@@ -5,7 +5,7 @@ import { AuthModule } from "../auth/auth.module";
 import { AcademiesModule } from "../academies/academies.module";
 
 @Module({
-  imports: [forwardRef(() => AuthModule), AcademiesModule],
+  imports: [forwardRef(() => AuthModule), forwardRef(() => AcademiesModule)],
   providers: [UsersResolver, UsersService],
   exports: [UsersService],
 })

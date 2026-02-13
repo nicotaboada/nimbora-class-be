@@ -48,10 +48,13 @@ model Academy {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   
-  users       User[]
-  students    Student[]
-  fees        Fee[]
-  invoices    Invoice[]
+  users           User[]
+  students        Student[]
+  fees            Fee[]
+  invoices        Invoice[]
+  features        AcademyFeature[]
+  afipSettings    AcademyAfipSettings?
+  billingProfiles BillingProfile[]
 }
 
 model User {
@@ -102,11 +105,12 @@ model Student {
   userId      String?       @unique
   user        User?         @relation(fields: [userId], references: [id])
   
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  charges     Charge[]
-  invoices    Invoice[]
-  credits     StudentCredit[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  charges         Charge[]
+  invoices        Invoice[]
+  credits         StudentCredit[]
+  billingProfiles BillingProfile[]
   
   @@index([academyId])
 }
@@ -217,6 +221,10 @@ model Invoice {
   recipientPhone   String?
   recipientAddress String?
 
+  // Billing profile (datos fiscales del receptor)
+  billingProfileId String?
+  billingProfile   BillingProfile? @relation(fields: [billingProfileId], references: [id])
+
   // Multi-tenancy
   academyId        String
   academy          Academy       @relation(fields: [academyId], references: [id])
@@ -242,6 +250,9 @@ model Invoice {
   lines            InvoiceLine[]
   payments         Payment[]
   generatedCredits StudentCredit[]
+
+  // Fiscal layer (AFIP)
+  afip             AfipInvoice?
 
   @@index([studentId])
   @@index([academyId])
@@ -364,4 +375,202 @@ model StudentCredit {
   @@index([studentId])
   @@index([status])
   @@index([sourcePaymentId])
+}
+
+// ============================================================================
+// FEATURE FLAGS MODULE
+// ============================================================================
+
+model AcademyFeature {
+  id        String   @id @default(uuid())
+  academyId String
+  academy   Academy  @relation(fields: [academyId], references: [id])
+
+  key       String   // "AFIP", "PAYMENTS", "WHATSAPP", ...
+  enabled   Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([academyId, key])
+  @@index([academyId])
+  @@index([key])
+}
+
+// ============================================================================
+// AFIP MODULE
+// ============================================================================
+
+enum AcademyTaxStatus {
+  MONOTRIBUTO
+  RESPONSABLE_INSCRIPTO
+  EXENTO
+  CONSUMIDOR_FINAL
+}
+
+enum AfipEnvironment {
+  HOMO
+  PROD
+}
+
+enum AfipDelegationStatus {
+  PENDING // Nunca verificada
+  OK      // Delegación válida
+  ERROR   // Delegación rota / revocada
+}
+
+enum AfipOnboardingStep {
+  FISCAL_DATA   // Step 1 completado (datos fiscales guardados)
+  DELEGATION_1  // Step 2 (pendiente de delegar en ARCA)
+  DELEGATION_2  // Step 3 (pendiente de verificar la delegación)
+  COMPLETED     // Onboarding finalizado
+}
+
+model AcademyAfipSettings {
+  id               String               @id @default(uuid())
+  academyId        String               @unique
+  academy          Academy              @relation(fields: [academyId], references: [id])
+
+  taxStatus        AcademyTaxStatus
+  cuit             String
+
+  // Datos del padrón ARCA (guardados al confirmar Step 1)
+  razonSocial        String?
+  personeria         String?              // "Física" / "Jurídica"
+  condicionIva       String?
+  domicilioFiscal    String?
+  actividadPrincipal String?
+
+  defaultPtoVta    Int                  @default(1)
+  environment      AfipEnvironment      @default(HOMO)
+
+  // Solo relevante para Responsable Inscripto; Monotributo no aplica IVA
+  vatRatePermil    Int?                 // 21000 = 21.000%
+
+  delegationStatus AfipDelegationStatus @default(PENDING)
+  delegatedAt      DateTime?
+
+  onboardingStep   AfipOnboardingStep   @default(FISCAL_DATA)
+
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  salesPoints      AfipSalesPoint[]
+}
+
+model AfipSalesPoint {
+  id               String              @id @default(uuid())
+  afipSettingsId   String
+  afipSettings     AcademyAfipSettings @relation(fields: [afipSettingsId], references: [id])
+
+  number           Int                 // Numero de punto de venta en ARCA
+  name             String              // Nombre descriptivo (ej: "Sede Central")
+  isActive         Boolean             @default(true)
+  isEnabledForArca Boolean             @default(false) // Se setea true via mutation de validacion
+
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@unique([afipSettingsId, number])
+  @@index([afipSettingsId])
+}
+
+// ============================================================================
+// BILLING PROFILE (datos fiscales del receptor)
+// ============================================================================
+
+enum BillingDocType {
+  CONSUMIDOR_FINAL // AFIP DocTipo 99 / DocNro 0
+  DNI
+  CUIT
+}
+
+enum BillingTaxCondition {
+  CONSUMIDOR_FINAL
+  MONOTRIBUTO
+  RESPONSABLE_INSCRIPTO
+  EXENTO
+}
+
+model BillingProfile {
+  id           String              @id @default(uuid())
+  academyId    String
+  academy      Academy             @relation(fields: [academyId], references: [id])
+
+  // Dueño (hoy Student; mañana puede ser Parent/Guardian)
+  studentId    String?
+  student      Student?            @relation(fields: [studentId], references: [id])
+
+  displayName  String
+  docType      BillingDocType
+  docNumber    String?             // null si CONSUMIDOR_FINAL
+  taxCondition BillingTaxCondition
+
+  razonSocial  String?
+  personeria   String?             // "Física" / "Jurídica"
+
+  email        String?
+  phone        String?
+  address      String?             // Resumen del domicilio fiscal
+
+  // Domicilio fiscal desglosado
+  street       String?             // Calle + número
+  apartment    String?             // Departamento / Piso
+  zipCode      String?             // Código postal
+  province     String?             // Provincia
+  city         String?             // Ciudad / Localidad
+
+  isDefault    Boolean             @default(false)
+
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  invoices     Invoice[]
+
+  @@index([academyId])
+  @@index([studentId])
+}
+
+// ============================================================================
+// AFIP FISCALIZATION (1:1 con Invoice)
+// ============================================================================
+
+enum AfipFiscalStatus {
+  EMITTING // Intento de fiscalización en curso
+  EMITTED  // Fiscalizada exitosamente (CAE + cbteNro)
+  ERROR    // Error en la fiscalización
+}
+
+model AfipInvoice {
+  id            String           @id @default(uuid())
+
+  invoiceId     String           @unique
+  invoice       Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  status        AfipFiscalStatus @default(EMITTING)
+
+  // Snapshot de datos fiscales del receptor usados para la emisión
+  recipientName String
+  docType       BillingDocType
+  docNumber     String?
+  taxCondition  BillingTaxCondition
+
+  // Parámetros AFIP usados
+  ptoVta        Int
+  cbteTipo      Int              // 6=B, 11=C (MVP)
+  concepto      Int              // 2=Servicios (MVP)
+  cbteFch       DateTime         // Fecha de emisión (normalmente "hoy")
+
+  // Resultado AFIP (solo cuando EMITTED)
+  cbteNro       Int?
+  cae           String?
+  caeVto        DateTime?
+
+  // Debug/soporte
+  lastError     String?
+  requestJson   Json?            // Guardar solo en ERROR si se prefiere
+  responseJson  Json?            // Guardar solo en ERROR si se prefiere
+
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 }

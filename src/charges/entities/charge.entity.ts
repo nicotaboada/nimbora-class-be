@@ -1,5 +1,6 @@
 import { ObjectType, Field, Int } from "@nestjs/graphql";
 import { ChargeStatus } from "../enums/charge-status.enum";
+import { ChargeInvoicingState } from "../enums/charge-invoicing-state.enum";
 import { ChargeFee } from "./charge-fee.entity";
 
 @ObjectType()
@@ -39,11 +40,24 @@ export class Charge {
   @Field(() => ChargeStatus)
   status: ChargeStatus;
 
+  @Field(() => ChargeInvoicingState, {
+    description:
+      "Estado visual de facturación: PENDING (futuro), REQUIRES_INVOICING (a facturar), INVOICED (facturado)",
+  })
+  invoicingState: ChargeInvoicingState;
+
   @Field({
     description:
       "Indica si el cargo está vencido (dueDate < hoy y status === PENDING)",
   })
   isOverdue: boolean;
+
+  @Field({
+    nullable: true,
+    description:
+      "ID de la factura asociada (solo presente si el cargo fue facturado)",
+  })
+  invoiceId?: string;
 
   @Field()
   createdAt: Date;

@@ -8,6 +8,9 @@ type Academy {
   createdAt: DateTime!
   currency: String!
   email: String
+
+  """Feature flags de la academia"""
+  features: [AcademyFeature!]
   id: String!
   name: String!
   ownerUserId: String!
@@ -18,11 +21,75 @@ type Academy {
   updatedAt: DateTime!
 }
 
+type AcademyAfipSettings {
+  academyId: String!
+
+  """Actividad económica principal"""
+  actividadPrincipal: String
+
+  """Condición ante IVA"""
+  condicionIva: String
+  createdAt: DateTime!
+
+  """CUIT de la academy"""
+  cuit: String!
+
+  """Punto de venta por defecto"""
+  defaultPtoVta: Int!
+
+  """Fecha en que se verificó la delegación OK"""
+  delegatedAt: DateTime
+
+  """Estado de la delegación WSFE"""
+  delegationStatus: AfipDelegationStatus!
+
+  """Domicilio fiscal completo"""
+  domicilioFiscal: String
+
+  """Ambiente AFIP (HOMO o PROD)"""
+  environment: AfipEnvironment!
+  id: String!
+
+  """Paso actual del onboarding AFIP"""
+  onboardingStep: AfipOnboardingStep!
+
+  """Tipo de personería (Física / Jurídica)"""
+  personeria: String
+
+  """Razón social o nombre completo"""
+  razonSocial: String
+  taxStatus: AcademyTaxStatus!
+  updatedAt: DateTime!
+
+  """Tasa de IVA en permil (21000 = 21%). Solo para RI."""
+  vatRatePermil: Int
+}
+
+type AcademyFeature {
+  academyId: String!
+  createdAt: DateTime!
+
+  """Whether the feature is enabled for this academy"""
+  enabled: Boolean!
+  id: String!
+
+  """Feature key (e.g. AFIP, PAYMENTS, WHATSAPP)"""
+  key: String!
+  updatedAt: DateTime!
+}
+
 """Estado de la academia"""
 enum AcademyStatus {
   ACTIVE
   INACTIVE
   SUSPENDED
+}
+
+enum AcademyTaxStatus {
+  CONSUMIDOR_FINAL
+  EXENTO
+  MONOTRIBUTO
+  RESPONSABLE_INSCRIPTO
 }
 
 input AddInvoiceLineInput {
@@ -51,6 +118,46 @@ input AddPaymentInput {
   reference: String
 }
 
+enum AfipDelegationStatus {
+  ERROR
+  OK
+  PENDING
+}
+
+enum AfipEnvironment {
+  HOMO
+  PROD
+}
+
+enum AfipOnboardingStep {
+  COMPLETED
+  DELEGATION_1
+  DELEGATION_2
+  FISCAL_DATA
+}
+
+type AfipSalesPoint {
+  """ID de la configuración AFIP asociada"""
+  afipSettingsId: String!
+  createdAt: DateTime!
+
+  """ID del punto de venta"""
+  id: String!
+
+  """Si el punto de venta está activo en el sistema"""
+  isActive: Boolean!
+
+  """Si el punto de venta fue validado y está habilitado en ARCA"""
+  isEnabledForArca: Boolean!
+
+  """Nombre descriptivo del punto de venta"""
+  name: String!
+
+  """Número de punto de venta en ARCA"""
+  number: Int!
+  updatedAt: DateTime!
+}
+
 input AssignFeeInput {
   """ID del fee a asignar"""
   feeId: String!
@@ -70,6 +177,80 @@ type AssignFeeOutput {
   chargesCreated: Int!
 }
 
+"""Tipo de documento fiscal del receptor"""
+enum BillingDocType {
+  CONSUMIDOR_FINAL
+  CUIT
+  DNI
+}
+
+"""Perfil de facturación (datos fiscales del receptor)"""
+type BillingProfile {
+  """ID de la academia"""
+  academyId: String!
+
+  """Domicilio fiscal completo (resumen)"""
+  address: String
+
+  """Departamento / Piso"""
+  apartment: String
+
+  """Ciudad / Localidad"""
+  city: String
+  createdAt: DateTime!
+
+  """Nombre a mostrar / Razón social"""
+  displayName: String!
+
+  """Número de documento (null si Consumidor Final)"""
+  docNumber: String
+
+  """Tipo de documento fiscal"""
+  docType: BillingDocType!
+
+  """Email de contacto"""
+  email: String
+
+  """ID del billing profile"""
+  id: String!
+
+  """Si es el perfil por defecto del alumno"""
+  isDefault: Boolean!
+
+  """Personería (Física / Jurídica)"""
+  personeria: String
+
+  """Teléfono de contacto"""
+  phone: String
+
+  """Provincia"""
+  province: String
+
+  """Razón social del padrón ARCA"""
+  razonSocial: String
+
+  """Calle y número"""
+  street: String
+
+  """ID del alumno dueño del perfil"""
+  studentId: String
+
+  """Condición impositiva"""
+  taxCondition: BillingTaxCondition!
+  updatedAt: DateTime!
+
+  """Código postal"""
+  zipCode: String
+}
+
+"""Condición impositiva del receptor"""
+enum BillingTaxCondition {
+  CONSUMIDOR_FINAL
+  EXENTO
+  MONOTRIBUTO
+  RESPONSABLE_INSCRIPTO
+}
+
 type Charge {
   """Monto en centavos (snapshot del Fee.cost)"""
   amount: Int!
@@ -85,6 +266,14 @@ type Charge {
 
   """Número de cuota (1, 2, 3... N)"""
   installmentNumber: Int!
+
+  """ID de la factura asociada (solo presente si el cargo fue facturado)"""
+  invoiceId: String
+
+  """
+  Estado visual de facturación: PENDING (futuro), REQUIRES_INVOICING (a facturar), INVOICED (facturado)
+  """
+  invoicingState: ChargeInvoicingState!
 
   """Indica si el cargo está vencido (dueDate < hoy y status === PENDING)"""
   isOverdue: Boolean!
@@ -105,6 +294,15 @@ type ChargeFee {
 
   """ID del fee"""
   id: String!
+}
+
+"""
+Estado visual de facturación de una cuota (pendiente, a facturar, facturado)
+"""
+enum ChargeInvoicingState {
+  INVOICED
+  PENDING
+  REQUIRES_INVOICING
 }
 
 """Mes desde el cual empezar a cobrar"""
@@ -160,6 +358,14 @@ input CreateAcademyInput {
   slug: String!
   status: AcademyStatus! = ACTIVE
   timezone: String!
+}
+
+input CreateAfipSalesPointInput {
+  """Nombre descriptivo del punto de venta"""
+  name: String!
+
+  """Número de punto de venta en ARCA"""
+  number: Int!
 }
 
 input CreateInvoiceInput {
@@ -292,6 +498,15 @@ type Fee {
   total: Int!
   type: FeeType!
   updatedAt: DateTime!
+}
+
+"""
+Estado de facturación de un grupo de cuotas (sin facturar, parcial, completamente facturado)
+"""
+enum FeeInvoicingStatus {
+  FULLY_INVOICED
+  NOT_INVOICED
+  PARTIALLY_INVOICED
 }
 
 """Periodicidad del fee (solo aplica para fees periódicos)"""
@@ -450,7 +665,15 @@ type Mutation {
 
   """Asigna un fee a estudiantes"""
   assignFeeToStudents(input: AssignFeeInput!): AssignFeeOutput!
+
+  """Step 2: Confirma que delegó en ARCA y avanza a DELEGATION_2"""
+  confirmAfipDelegationReady: AcademyAfipSettings!
   createAcademy(input: CreateAcademyInput!): Academy!
+
+  """
+  Crea un punto de venta AFIP (sin validar contra ARCA, usar validateAfipSalesPoint después)
+  """
+  createAfipSalesPoint(input: CreateAfipSalesPointInput!): AfipSalesPoint!
 
   """Crea una nueva factura"""
   createInvoice(input: CreateInvoiceInput!): Invoice!
@@ -459,6 +682,12 @@ type Mutation {
   createPeriodicFee(input: CreatePeriodicFeeInput!): Fee!
   createStudent(createStudentInput: CreateStudentInput!): Student!
   createUser(input: CreateUserInput!): User!
+
+  """Elimina un punto de venta AFIP (no se puede eliminar si está activo)"""
+  deleteAfipSalesPoint(
+    """ID del punto de venta a eliminar"""
+    id: String!
+  ): Boolean!
   deleteFee(id: ID!): Fee!
   removeAcademy(id: String!): Academy!
 
@@ -466,7 +695,28 @@ type Mutation {
   removeInvoiceLine(lineId: ID!): Invoice!
   removeStudent(id: String!): Student!
   removeUser(id: String!): User!
+
+  """Habilita o deshabilita un feature flag"""
+  setFeatureFlag(input: SetFeatureFlagInput!): AcademyFeature!
+
+  """Step 1: Guarda datos fiscales y avanza onboarding a DELEGATION_1"""
+  setupAfipSettings(input: SetupAfipSettingsInput!): AcademyAfipSettings!
+
+  """
+  Alterna el estado activo/inactivo de un punto de venta AFIP. Solo uno puede estar activo a la vez.
+  """
+  toggleAfipSalesPointActive(
+    """ID del punto de venta"""
+    id: String!
+  ): AfipSalesPoint!
   updateAcademy(input: UpdateAcademyInput!): Academy!
+
+  """Edita el nombre de un punto de venta AFIP"""
+  updateAfipSalesPoint(
+    """ID del punto de venta"""
+    id: String!
+    input: UpdateAfipSalesPointInput!
+  ): AfipSalesPoint!
 
   """Actualiza el descuento de una línea"""
   updateInvoiceLine(input: UpdateInvoiceLineInput!): Invoice!
@@ -475,6 +725,22 @@ type Mutation {
   updatePeriodicFee(input: UpdatePeriodicFeeInput!): Fee!
   updateStudent(updateStudentInput: UpdateStudentInput!): Student!
   updateUser(input: UpdateUserInput!): User!
+
+  """Crea o actualiza un perfil de facturación de un alumno"""
+  upsertBillingProfile(input: UpsertBillingProfileInput!): BillingProfile!
+
+  """
+  Valida un punto de venta contra ARCA, lo activa y desactiva todos los demás puntos de venta
+  """
+  validateAfipSalesPoint(
+    """ID del punto de venta a validar"""
+    id: String!
+  ): AfipSalesPoint!
+
+  """
+  Step 3: Verifica la delegación WSFE y avanza onboarding de DELEGATION_2 a COMPLETED
+  """
+  verifyAfipDelegation: AcademyAfipSettings!
 
   """Anula una factura (soft delete)"""
   voidInvoice(invoiceId: ID!): Invoice!
@@ -606,11 +872,32 @@ type Query {
   academy(id: String!): Academy
   academyBySlug(slug: String!): Academy
 
+  """Lista todos los puntos de venta AFIP de la academy"""
+  afipSalesPoints: [AfipSalesPoint!]!
+
+  """Obtiene la configuración AFIP de la academy (incluye onboardingStep)"""
+  afipSettings: AcademyAfipSettings
+
+  """Obtiene un perfil de facturación por ID"""
+  billingProfile(
+    """ID del billing profile"""
+    id: String!
+  ): BillingProfile!
+
+  """Obtiene los perfiles de facturación de un alumno"""
+  billingProfilesByStudent(
+    """ID del alumno"""
+    studentId: String!
+  ): [BillingProfile!]!
+
   """Obtiene todos los cargos de un estudiante"""
   chargesByStudent(studentId: String!): [Charge!]!
 
   """Obtiene cargos para facturación de un estudiante"""
   chargesForInvoice(input: ChargesForInvoiceInput!): ChargesForInvoiceOutput!
+
+  """Lista todos los feature flags de la academy"""
+  featureFlags: [AcademyFeature!]!
   fee(id: ID!): Fee!
   fees(limit: Int = 10, page: Int = 1): PaginatedFees!
 
@@ -619,6 +906,15 @@ type Query {
 
   """Lista facturas paginada"""
   invoices(filter: InvoicesFilterInput): PaginatedInvoices!
+
+  """Verifica si un feature está habilitado"""
+  isFeatureEnabled(key: String!): Boolean!
+
+  """Consulta datos del contribuyente en ARCA por CUIT"""
+  lookupCuit(
+    """CUIT a consultar (con o sin guiones)"""
+    cuit: String!
+  ): TaxpayerInfo!
 
   """Obtiene el usuario actual autenticado"""
   me: User!
@@ -636,6 +932,14 @@ type Query {
   """Lista los créditos de un estudiante"""
   studentCredits(studentId: ID!): [StudentCredit!]!
 
+  """Obtiene el detalle de cuotas de un fee para un estudiante"""
+  studentFeeDetail(feeId: String!, studentId: String!): StudentFeeDetail!
+
+  """
+  Obtiene los cargos de un estudiante agrupados por fee con estados de facturación
+  """
+  studentFeeOverviews(filter: StudentFeeOverviewFilter, studentId: String!): [StudentFeeOverview!]!
+
   """Obtiene IDs de estudiantes que ya tienen un fee asignado"""
   studentIdsWithFee(feeId: String!): [String!]!
   studentStats: StudentStats!
@@ -645,7 +949,24 @@ type Query {
   users: [User!]!
 }
 
+input SetFeatureFlagInput {
+  """Enable or disable the feature"""
+  enabled: Boolean!
+
+  """Feature key (e.g. AFIP, PAYMENTS, WHATSAPP)"""
+  key: String!
+}
+
+input SetupAfipSettingsInput {
+  """CUIT de la academy (con o sin guiones)"""
+  cuit: String!
+
+  """Condición impositiva de la academy"""
+  taxStatus: AcademyTaxStatus!
+}
+
 type Student {
+  academyId: String!
   createdAt: DateTime!
   email: String!
   firstName: String!
@@ -684,6 +1005,79 @@ type StudentCredit {
   updatedAt: DateTime!
 }
 
+type StudentFeeDetail {
+  """Cuotas individuales del fee"""
+  charges: [Charge!]!
+
+  """Descripción del fee"""
+  feeDescription: String!
+
+  """ID del fee"""
+  feeId: String!
+
+  """Tipo de fee"""
+  feeType: FeeType!
+
+  """
+  Monto facturado en centavos (suma de cuotas con status INVOICED o PAID)
+  """
+  invoicedAmount: Int!
+
+  """Monto total en centavos (suma de todas las cuotas)"""
+  totalAmount: Int!
+}
+
+type StudentFeeOverview {
+  """
+  Cantidad de cuotas que requieren facturación (PENDING con issueDate <= hoy)
+  """
+  actionRequiredChargeCount: Int!
+
+  """Cantidad total de cuotas"""
+  chargeCount: Int!
+
+  """Descripción del fee (ej: Matrícula 2026)"""
+  feeDescription: String!
+
+  """ID del fee"""
+  feeId: String!
+
+  """Tipo de fee (ONE_OFF, MONTHLY, etc)"""
+  feeType: FeeType!
+
+  """
+  Indica si tiene al menos una cuota que requiere facturación (PENDING con issueDate <= hoy)
+  """
+  hasChargesRequiringAction: Boolean!
+
+  """Cantidad de cuotas facturadas (INVOICED o PAID)"""
+  invoicedChargeCount: Int!
+
+  """Estado de facturación del grupo de cuotas"""
+  invoicingStatus: FeeInvoicingStatus!
+
+  """Próxima fecha de emisión de cuotas pendientes"""
+  nextIssueDate: DateTime
+
+  """Cantidad de cuotas pendientes (futuras, issueDate > hoy)"""
+  pendingChargeCount: Int!
+
+  """Monto total en centavos (suma de todas las cuotas)"""
+  totalAmount: Int!
+}
+
+input StudentFeeOverviewFilter {
+  """
+  Filtrar cargos que requieren facturación (al menos una cuota con issueDate <= hoy y PENDING)
+  """
+  hasChargesRequiringAction: Boolean
+
+  """
+  Filtrar por estado de facturación (NOT_INVOICED, PARTIALLY_INVOICED, FULLY_INVOICED)
+  """
+  invoicingStatus: FeeInvoicingStatus
+}
+
 type StudentStats {
   """Total de estudiantes activos (ENABLED)"""
   active: Int!
@@ -701,6 +1095,39 @@ enum StudentStatus {
   ENABLED
 }
 
+"""Datos del contribuyente obtenidos de ARCA"""
+type TaxpayerInfo {
+  """Actividad económica principal"""
+  actividadPrincipal: String!
+
+  """Ciudad / Localidad"""
+  city: String
+
+  """Condición ante IVA"""
+  condicionIva: String!
+
+  """CUIT sin guiones"""
+  cuit: String!
+
+  """Domicilio fiscal completo (resumen)"""
+  domicilioFiscal: String!
+
+  """Tipo de personería (Física / Jurídica)"""
+  personeria: String!
+
+  """Provincia"""
+  province: String
+
+  """Razón social o nombre completo"""
+  razonSocial: String!
+
+  """Calle y número"""
+  street: String
+
+  """Código postal"""
+  zipCode: String
+}
+
 input UpdateAcademyInput {
   address: String
   country: String
@@ -713,6 +1140,11 @@ input UpdateAcademyInput {
   slug: String
   status: AcademyStatus = ACTIVE
   timezone: String
+}
+
+input UpdateAfipSalesPointInput {
+  """Nuevo nombre descriptivo del punto de venta"""
+  name: String!
 }
 
 input UpdateInvoiceLineInput {
@@ -769,6 +1201,60 @@ input UpdateUserInput {
   phone: String
   role: UserRole
   supabaseUserId: String
+}
+
+"""Datos para crear o actualizar un perfil de facturación"""
+input UpsertBillingProfileInput {
+  """Domicilio fiscal completo (resumen)"""
+  address: String
+
+  """Departamento / Piso"""
+  apartment: String
+
+  """Ciudad / Localidad"""
+  city: String
+
+  """Nombre a mostrar / Razón social"""
+  displayName: String!
+
+  """Número de documento"""
+  docNumber: String
+
+  """Tipo de documento fiscal"""
+  docType: BillingDocType!
+
+  """Email de contacto"""
+  email: String
+
+  """ID del billing profile (si viene, es update)"""
+  id: String
+
+  """Si es el perfil por defecto"""
+  isDefault: Boolean = true
+
+  """Personería (Física / Jurídica)"""
+  personeria: String
+
+  """Teléfono de contacto"""
+  phone: String
+
+  """Provincia"""
+  province: String
+
+  """Razón social del padrón ARCA"""
+  razonSocial: String
+
+  """Calle y número"""
+  street: String
+
+  """ID del alumno"""
+  studentId: String!
+
+  """Condición impositiva"""
+  taxCondition: BillingTaxCondition!
+
+  """Código postal"""
+  zipCode: String
 }
 
 type User {

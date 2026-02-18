@@ -11,6 +11,7 @@ import { AddInvoiceLineInput } from "./dto/add-invoice-line.input";
 import { UpdateInvoiceLineInput } from "./dto/update-invoice-line.input";
 import { InvoicesFilterInput } from "./dto/findAll-filter.input";
 import { Invoice } from "./entities/invoice.entity";
+import { StudentInvoiceOverview } from "./entities/student-invoice-overview.entity";
 import {
   calculateFinalAmount,
   calculateInvoiceTotals,
@@ -562,6 +563,65 @@ export class InvoicesService {
         hasNextPage: page < totalPages,
         hasPreviousPage: page > 1,
       },
+    };
+  }
+
+  /**
+   * Overview financiero de un alumno: facturas impagas/pagadas recientes y totales.
+   */
+  async getStudentOverview(
+    studentId: string,
+    academyId: string,
+  ): Promise<StudentInvoiceOverview> {
+    await this.studentsService.findOne(studentId, academyId);
+    const [unpaidInvoices, paidInvoices, unpaidAggregate, paidAggregate] =
+      await Promise.all([
+        this.prisma.invoice.findMany({
+          where: {
+            studentId,
+            academyId,
+            status: {
+              in: [InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID],
+            },
+          },
+          orderBy: { dueDate: "asc" },
+          take: 3,
+          include: { lines: true, payments: true },
+        }),
+        this.prisma.invoice.findMany({
+          where: {
+            studentId,
+            academyId,
+            status: InvoiceStatus.PAID,
+          },
+          orderBy: { dueDate: "desc" },
+          take: 3,
+          include: { lines: true, payments: true },
+        }),
+        this.prisma.invoice.aggregate({
+          where: {
+            studentId,
+            academyId,
+            status: {
+              in: [InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID],
+            },
+          },
+          _sum: { balance: true },
+        }),
+        this.prisma.invoice.aggregate({
+          where: {
+            studentId,
+            academyId,
+            status: InvoiceStatus.PAID,
+          },
+          _sum: { paidAmount: true },
+        }),
+      ]);
+    return {
+      unpaidInvoices: unpaidInvoices.map((inv) => mapInvoiceToEntity(inv)),
+      paidInvoices: paidInvoices.map((inv) => mapInvoiceToEntity(inv)),
+      totalUnpaidAmount: unpaidAggregate._sum.balance ?? 0,
+      totalPaidAmount: paidAggregate._sum.paidAmount ?? 0,
     };
   }
 

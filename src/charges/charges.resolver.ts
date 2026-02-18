@@ -9,6 +9,9 @@ import { ChargesForInvoiceOutput } from "./dto/charges-for-invoice.output";
 import { StudentFeeOverview } from "./dto/student-fee-overview.output";
 import { StudentFeeOverviewFilter } from "./dto/student-fee-overview-filter.input";
 import { StudentFeeDetail } from "./dto/student-fee-detail.output";
+import { StudentChargesOverview } from "./dto/student-charges-overview.output";
+import { UnassignFeeInput } from "./dto/unassign-fee.input";
+import { UnassignFeeOutput } from "./dto/unassign-fee.output";
 import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { User } from "../users/entities/user.entity";
@@ -95,12 +98,43 @@ export class ChargesResolver {
   }
 
   /**
+   * Obtiene el resumen financiero de un estudiante (overview: totales + últimos 3 cargos por categoría).
+   */
+  @Query(() => StudentChargesOverview, {
+    name: "studentChargesOverview",
+    description:
+      "Resumen financiero del estudiante: totales y últimos cargos por categoría",
+  })
+  async getStudentChargesOverview(
+    @Args("studentId") studentId: string,
+    @CurrentUser() user: User,
+  ): Promise<StudentChargesOverview> {
+    return await this.chargesService.getStudentChargesOverview(
+      studentId,
+      user.academyId,
+    );
+  }
+
+  /**
+   * Desasigna un fee de un estudiante cancelando sus cuotas pendientes.
+   */
+  @Mutation(() => UnassignFeeOutput, {
+    description:
+      "Desasigna un fee de un estudiante cancelando sus cuotas pendientes",
+  })
+  async unassignFeeFromStudent(
+    @Args("input") input: UnassignFeeInput,
+    @CurrentUser() user: User,
+  ): Promise<UnassignFeeOutput> {
+    return this.chargesService.unassignFeeFromStudent(input, user.academyId);
+  }
+
+  /**
    * Obtiene el detalle de cuotas de un fee para un estudiante (slideout).
    */
   @Query(() => StudentFeeDetail, {
     name: "studentFeeDetail",
-    description:
-      "Obtiene el detalle de cuotas de un fee para un estudiante",
+    description: "Obtiene el detalle de cuotas de un fee para un estudiante",
   })
   async getStudentFeeDetail(
     @Args("studentId") studentId: string,

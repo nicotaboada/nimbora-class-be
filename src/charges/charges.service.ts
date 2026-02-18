@@ -8,6 +8,9 @@ import { ChargesForInvoiceInput } from "./dto/charges-for-invoice.input";
 import { StudentFeeOverview } from "./dto/student-fee-overview.output";
 import { StudentFeeOverviewFilter } from "./dto/student-fee-overview-filter.input";
 import { StudentFeeDetail } from "./dto/student-fee-detail.output";
+import { StudentChargesOverview } from "./dto/student-charges-overview.output";
+import { UnassignFeeInput } from "./dto/unassign-fee.input";
+import { UnassignFeeOutput } from "./dto/unassign-fee.output";
 import { FeeInvoicingStatus } from "./enums/fee-invoicing-status.enum";
 import {
   calculateChargeDates,
@@ -309,6 +312,110 @@ export class ChargesService {
       invoicedAmount,
       charges,
     };
+  }
+
+  /**
+   * Obtiene el resumen financiero de un estudiante para la vista overview.
+   * Retorna totales y los 3 cargos más relevantes de cada categoría.
+   */
+  async getStudentChargesOverview(
+    studentId: string,
+    academyId: string,
+  ): Promise<StudentChargesOverview> {
+    await this.studentsService.findOne(studentId, academyId);
+    const chargesRaw = await this.prisma.charge.findMany({
+      where: {
+        studentId,
+        status: { not: ChargeStatus.CANCELLED },
+      },
+      include: {
+        fee: true,
+        invoiceLines: {
+          where: { isActive: true },
+          select: { invoiceId: true },
+          take: 1,
+        },
+      },
+      orderBy: { dueDate: "asc" },
+    });
+    const currentDate = new Date();
+    const requiresInvoicingRaw: typeof chargesRaw = [];
+    const invoicedRaw: typeof chargesRaw = [];
+    let requiresInvoicingTotal = 0;
+    let invoicedTotal = 0;
+    for (const charge of chargesRaw) {
+      const isInvoiced =
+        charge.status === ChargeStatus.INVOICED ||
+        charge.status === ChargeStatus.PAID;
+      const isRequiresInvoicing =
+        charge.status === ChargeStatus.PENDING &&
+        !isBefore(currentDate, charge.issueDate);
+      if (isInvoiced) {
+        invoicedTotal += charge.amount;
+        invoicedRaw.push(charge);
+      } else if (isRequiresInvoicing) {
+        requiresInvoicingTotal += charge.amount;
+        requiresInvoicingRaw.push(charge);
+      }
+    }
+    const requiresInvoicingCharges = requiresInvoicingRaw
+      .slice(0, 3)
+      .map((c) => mapChargeToEntity(c, currentDate));
+    const invoicedCharges = invoicedRaw
+      .reverse()
+      .slice(0, 3)
+      .map((c) => mapChargeToEntity(c, currentDate));
+    return {
+      requiresInvoicingTotal,
+      invoicedTotal,
+      totalAmount: requiresInvoicingTotal + invoicedTotal,
+      requiresInvoicingCharges,
+      invoicedCharges,
+    };
+  }
+
+  /**
+   * Desasigna un fee de un estudiante cancelando todas sus cuotas PENDING.
+   * Rechaza si alguna cuota ya fue facturada o pagada.
+   */
+  async unassignFeeFromStudent(
+    input: UnassignFeeInput,
+    academyId: string,
+  ): Promise<UnassignFeeOutput> {
+    const { studentId, feeId } = input;
+    await this.studentsService.findOne(studentId, academyId);
+    await this.feesService.findOne(feeId, academyId);
+    const charges = await this.prisma.charge.findMany({
+      where: {
+        studentId,
+        feeId,
+        status: { not: ChargeStatus.CANCELLED },
+      },
+      select: { id: true, status: true },
+    });
+    if (charges.length === 0) {
+      throw new BadRequestException(
+        "No se encontraron cuotas activas para este fee y estudiante",
+      );
+    }
+    const hasInvoicedOrPaid = charges.some(
+      (c) =>
+        c.status === ChargeStatus.INVOICED || c.status === ChargeStatus.PAID,
+    );
+    if (hasInvoicedOrPaid) {
+      throw new BadRequestException(
+        "No se puede desasignar un fee que tiene cuotas facturadas o pagadas",
+      );
+    }
+    const result = await this.prisma.charge.updateMany({
+      where: {
+        studentId,
+        feeId,
+        status: ChargeStatus.PENDING,
+      },
+      data: { status: ChargeStatus.CANCELLED },
+    });
+    return { cancelledCount: result.count };
   }
 
   /**

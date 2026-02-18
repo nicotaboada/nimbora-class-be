@@ -2,6 +2,7 @@ import { Resolver, Query, Mutation, Args, ID } from "@nestjs/graphql";
 import { UseGuards } from "@nestjs/common";
 import { InvoicesService } from "./invoices.service";
 import { Invoice } from "./entities/invoice.entity";
+import { StudentInvoiceOverview } from "./entities/student-invoice-overview.entity";
 import { CreateInvoiceInput } from "./dto/create-invoice.input";
 import { AddInvoiceLineInput } from "./dto/add-invoice-line.input";
 import { UpdateInvoiceLineInput } from "./dto/update-invoice-line.input";
@@ -101,5 +102,19 @@ export class InvoicesResolver {
     @Args("filter", { nullable: true }) filter?: InvoicesFilterInput,
   ): Promise<PaginatedInvoices> {
     return this.invoicesService.findAll(user.academyId, filter);
+  }
+
+  /**
+   * Overview financiero de un alumno.
+   */
+  @Query(() => StudentInvoiceOverview, {
+    name: "studentInvoiceOverview",
+    description: "Overview financiero de un alumno: facturas impagas/pagadas y totales",
+  })
+  async getStudentOverview(
+    @Args("studentId", { type: () => ID }) studentId: string,
+    @CurrentUser() user: User,
+  ): Promise<StudentInvoiceOverview> {
+    return this.invoicesService.getStudentOverview(studentId, user.academyId);
   }
 }

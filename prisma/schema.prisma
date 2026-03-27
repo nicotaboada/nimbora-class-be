@@ -55,6 +55,7 @@ model Academy {
   features        AcademyFeature[]
   afipSettings    AcademyAfipSettings?
   billingProfiles BillingProfile[]
+  bulkOperations  BulkOperation[]
 }
 
 model User {
@@ -573,4 +574,47 @@ model AfipInvoice {
 
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
+}
+
+// ============================================================================
+// BULK OPERATIONS MODULE
+// ============================================================================
+
+enum BulkOperationType {
+  BULK_INVOICE
+  BULK_AFIP
+}
+
+enum BulkOperationStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model BulkOperation {
+  id             String              @id @default(uuid())
+  type           BulkOperationType
+  status         BulkOperationStatus @default(PENDING)
+
+  academyId      String
+  academy        Academy             @relation(fields: [academyId], references: [id])
+
+  totalItems     Int
+  completedItems Int                 @default(0)
+  failedItems    Int                 @default(0)
+  skippedItems   Int                 @default(0)
+
+  results        Json                @default("[]")
+  params         Json
+
+  triggerRunId   String?
+
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([academyId])
+  @@index([status])
 }

@@ -1,6 +1,8 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { INestApplication } from "@nestjs/common";
 import { ChargesService } from "./charges.service";
+import { StudentsService } from "../students/students.service";
+import { FeesService } from "../fees/fees.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { FeeType, FeePeriod, ChargeStatus } from "@prisma/client";
 import {
@@ -17,6 +19,7 @@ describe("ChargesService (integration)", () => {
   let app: INestApplication;
   let chargesService: ChargesService;
   let prismaService: TestPrismaService;
+  let testAcademyId: string;
 
   beforeAll(async () => {
     prismaService = await getTestPrismaService();
@@ -24,6 +27,8 @@ describe("ChargesService (integration)", () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       providers: [
         ChargesService,
+        StudentsService,
+        FeesService,
         {
           provide: PrismaService,
           useValue: prismaService,
@@ -46,6 +51,20 @@ describe("ChargesService (integration)", () => {
     await prismaService.charge.deleteMany();
     await prismaService.fee.deleteMany();
     await prismaService.student.deleteMany();
+    await prismaService.academy.deleteMany();
+
+    // Crear Academy para tests
+    const academy = await prismaService.academy.create({
+      data: {
+        name: "Test Academy",
+        slug: "test-academy",
+        country: "AR",
+        currency: "ARS",
+        timezone: "America/Argentina/Buenos_Aires",
+        ownerUserId: "test-owner",
+      },
+    });
+    testAcademyId = academy.id;
   });
 
   /**
@@ -57,6 +76,7 @@ describe("ChargesService (integration)", () => {
         firstName: "Test",
         lastName: "Student",
         email,
+        academyId: testAcademyId,
         updatedAt: new Date(),
       },
     });
@@ -81,6 +101,7 @@ describe("ChargesService (integration)", () => {
         cost: overrides.cost ?? 10_000,
         occurrences: overrides.occurrences ?? 1,
         period: overrides.period ?? null,
+        academyId: testAcademyId,
         updatedAt: new Date(),
       },
     });
@@ -91,11 +112,14 @@ describe("ChargesService (integration)", () => {
       const student = await createTestStudent();
       const fee = await createTestFee({ type: FeeType.ONE_OFF, cost: 15_000 });
 
-      const result = await chargesService.assignFeeToStudents({
-        feeId: fee.id,
-        studentIds: [student.id],
-        startMonth: ChargeStartMonth.NEXT_MONTH,
-      });
+      const result = await chargesService.assignFeeToStudents(
+        {
+          feeId: fee.id,
+          studentIds: [student.id],
+          startMonth: ChargeStartMonth.NEXT_MONTH,
+        },
+        testAcademyId,
+      );
 
       expect(result.chargesCreated).toBe(1);
       expect(result.charges).toHaveLength(1);
@@ -112,11 +136,14 @@ describe("ChargesService (integration)", () => {
       const student = await createTestStudent();
       const fee = await createTestFee({ type: FeeType.ONE_OFF, cost: 10_000 });
 
-      const result = await chargesService.assignFeeToStudents({
-        feeId: fee.id,
-        studentIds: [student.id],
-        startMonth: ChargeStartMonth.CURRENT_MONTH,
-      });
+      const result = await chargesService.assignFeeToStudents(
+        {
+          feeId: fee.id,
+          studentIds: [student.id],
+          startMonth: ChargeStartMonth.CURRENT_MONTH,
+        },
+        testAcademyId,
+      );
 
       expect(result.chargesCreated).toBe(1);
       const charge = result.charges[0];
@@ -141,11 +168,14 @@ describe("ChargesService (integration)", () => {
         occurrences: 3,
       });
 
-      const result = await chargesService.assignFeeToStudents({
-        feeId: fee.id,
-        studentIds: [student.id],
-        startMonth: ChargeStartMonth.NEXT_MONTH,
-      });
+      const result = await chargesService.assignFeeToStudents(
+        {
+          feeId: fee.id,
+          studentIds: [student.id],
+          startMonth: ChargeStartMonth.NEXT_MONTH,
+        },
+        testAcademyId,
+      );
 
       expect(result.chargesCreated).toBe(3);
       expect(result.charges).toHaveLength(3);
@@ -185,11 +215,14 @@ describe("ChargesService (integration)", () => {
         occurrences: 2,
       });
 
-      const result = await chargesService.assignFeeToStudents({
-        feeId: fee.id,
-        studentIds: [student1.id, student2.id],
-        startMonth: ChargeStartMonth.NEXT_MONTH,
-      });
+      const result = await chargesService.assignFeeToStudents(
+        {
+          feeId: fee.id,
+          studentIds: [student1.id, student2.id],
+          startMonth: ChargeStartMonth.NEXT_MONTH,
+        },
+        testAcademyId,
+      );
 
       // 2 estudiantes × 2 cuotas = 4 cargos
       expect(result.chargesCreated).toBe(4);
@@ -217,11 +250,14 @@ describe("ChargesService (integration)", () => {
         period: FeePeriod.EVERY_WEEK,
       });
 
-      const result = await chargesService.assignFeeToStudents({
-        feeId: fee.id,
-        studentIds: [student.id],
-        startMonth: ChargeStartMonth.NEXT_MONTH,
-      });
+      const result = await chargesService.assignFeeToStudents(
+        {
+          feeId: fee.id,
+          studentIds: [student.id],
+          startMonth: ChargeStartMonth.NEXT_MONTH,
+        },
+        testAcademyId,
+      );
 
       expect(result.chargesCreated).toBe(4);
 
@@ -248,11 +284,14 @@ describe("ChargesService (integration)", () => {
         period: FeePeriod.TWICE_A_MONTH,
       });
 
-      const result = await chargesService.assignFeeToStudents({
-        feeId: fee.id,
-        studentIds: [student.id],
-        startMonth: ChargeStartMonth.NEXT_MONTH,
-      });
+      const result = await chargesService.assignFeeToStudents(
+        {
+          feeId: fee.id,
+          studentIds: [student.id],
+          startMonth: ChargeStartMonth.NEXT_MONTH,
+        },
+        testAcademyId,
+      );
 
       expect(result.chargesCreated).toBe(4);
 
@@ -283,11 +322,14 @@ describe("ChargesService (integration)", () => {
         period: FeePeriod.EVERY_2_MONTHS,
       });
 
-      const result = await chargesService.assignFeeToStudents({
-        feeId: fee.id,
-        studentIds: [student.id],
-        startMonth: ChargeStartMonth.NEXT_MONTH,
-      });
+      const result = await chargesService.assignFeeToStudents(
+        {
+          feeId: fee.id,
+          studentIds: [student.id],
+          startMonth: ChargeStartMonth.NEXT_MONTH,
+        },
+        testAcademyId,
+      );
 
       expect(result.chargesCreated).toBe(26);
 
@@ -310,11 +352,14 @@ describe("ChargesService (integration)", () => {
         occurrences: 2,
       });
 
-      const result = await chargesService.assignFeeToStudents({
-        feeId: fee.id,
-        studentIds: [student.id],
-        startMonth: ChargeStartMonth.JUNE,
-      });
+      const result = await chargesService.assignFeeToStudents(
+        {
+          feeId: fee.id,
+          studentIds: [student.id],
+          startMonth: ChargeStartMonth.JUNE,
+        },
+        testAcademyId,
+      );
 
       expect(result.chargesCreated).toBe(2);
 
@@ -350,23 +395,32 @@ describe("ChargesService (integration)", () => {
       });
 
       // Asignar los 3 fees al mismo estudiante
-      const result1 = await chargesService.assignFeeToStudents({
-        feeId: enrollmentFee.id,
-        studentIds: [student.id],
-        startMonth: ChargeStartMonth.CURRENT_MONTH,
-      });
+      const result1 = await chargesService.assignFeeToStudents(
+        {
+          feeId: enrollmentFee.id,
+          studentIds: [student.id],
+          startMonth: ChargeStartMonth.CURRENT_MONTH,
+        },
+        testAcademyId,
+      );
 
-      const result2 = await chargesService.assignFeeToStudents({
-        feeId: monthlyFee.id,
-        studentIds: [student.id],
-        startMonth: ChargeStartMonth.NEXT_MONTH,
-      });
+      const result2 = await chargesService.assignFeeToStudents(
+        {
+          feeId: monthlyFee.id,
+          studentIds: [student.id],
+          startMonth: ChargeStartMonth.NEXT_MONTH,
+        },
+        testAcademyId,
+      );
 
-      const result3 = await chargesService.assignFeeToStudents({
-        feeId: weeklyFee.id,
-        studentIds: [student.id],
-        startMonth: ChargeStartMonth.NEXT_MONTH,
-      });
+      const result3 = await chargesService.assignFeeToStudents(
+        {
+          feeId: weeklyFee.id,
+          studentIds: [student.id],
+          startMonth: ChargeStartMonth.NEXT_MONTH,
+        },
+        testAcademyId,
+      );
 
       // Verificar cantidad de cargos por fee
       expect(result1.chargesCreated).toBe(1); // ONE_OFF
@@ -405,11 +459,14 @@ describe("ChargesService (integration)", () => {
       const student = await createTestStudent();
       const fee = await createTestFee({ type: FeeType.ONE_OFF });
 
-      const result = await chargesService.assignFeeToStudents({
-        feeId: fee.id,
-        studentIds: [student.id],
-        startMonth: ChargeStartMonth.NEXT_MONTH,
-      });
+      const result = await chargesService.assignFeeToStudents(
+        {
+          feeId: fee.id,
+          studentIds: [student.id],
+          startMonth: ChargeStartMonth.NEXT_MONTH,
+        },
+        testAcademyId,
+      );
 
       const charge = result.charges[0];
       const expectedDueDate = new Date(charge.issueDate);
@@ -425,11 +482,14 @@ describe("ChargesService (integration)", () => {
       const student = await createTestStudent();
 
       await expect(
-        chargesService.assignFeeToStudents({
-          feeId: "non-existent-id",
-          studentIds: [student.id],
-          startMonth: ChargeStartMonth.NEXT_MONTH,
-        }),
+        chargesService.assignFeeToStudents(
+          {
+            feeId: "non-existent-id",
+            studentIds: [student.id],
+            startMonth: ChargeStartMonth.NEXT_MONTH,
+          },
+          testAcademyId,
+        ),
       ).rejects.toThrow("Fee con ID non-existent-id no encontrado");
     });
 
@@ -437,11 +497,14 @@ describe("ChargesService (integration)", () => {
       const fee = await createTestFee();
 
       await expect(
-        chargesService.assignFeeToStudents({
-          feeId: fee.id,
-          studentIds: ["non-existent-id"],
-          startMonth: ChargeStartMonth.NEXT_MONTH,
-        }),
+        chargesService.assignFeeToStudents(
+          {
+            feeId: fee.id,
+            studentIds: ["non-existent-id"],
+            startMonth: ChargeStartMonth.NEXT_MONTH,
+          },
+          testAcademyId,
+        ),
       ).rejects.toThrow("Estudiantes no encontrados: non-existent-id");
     });
   });

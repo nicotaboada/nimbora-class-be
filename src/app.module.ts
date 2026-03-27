@@ -15,6 +15,7 @@ import { FeatureFlagsModule } from "./feature-flags/feature-flags.module";
 import { AcademiesModule } from "./academies/academies.module";
 import { UsersModule } from "./users/users.module";
 import { AuthModule } from "./auth/auth.module";
+import { BulkOperationsModule } from "./bulk-operations/bulk-operations.module";
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AuthModule } from "./auth/auth.module";
     FeatureFlagsModule,
     AfipModule,
     BillingProfilesModule,
+    BulkOperationsModule,
   ],
 })
 export class AppModule {}

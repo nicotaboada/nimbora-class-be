@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { PaymentsService } from "./payments.service";
 import { InvoicesService } from "../invoices/invoices.service";
+import { StudentsService } from "../students/students.service";
 import { TestPrismaService } from "../../test/test-database";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -20,6 +21,7 @@ describe("PaymentsService Integration Tests", () => {
   let invoicesService: InvoicesService;
   let testPrisma: TestPrismaService;
   let prisma: PrismaService;
+  let testAcademyId: string;
 
   beforeAll(async () => {
     testPrisma = new TestPrismaService();
@@ -30,6 +32,7 @@ describe("PaymentsService Integration Tests", () => {
       providers: [
         PaymentsService,
         InvoicesService,
+        StudentsService,
         { provide: PrismaService, useValue: testPrisma },
       ],
     }).compile();
@@ -45,6 +48,18 @@ describe("PaymentsService Integration Tests", () => {
 
   beforeEach(async () => {
     await testPrisma.cleanDatabase();
+
+    const academy = await prisma.academy.create({
+      data: {
+        name: "Test Academy",
+        slug: "test-academy",
+        country: "AR",
+        currency: "ARS",
+        timezone: "America/Argentina/Buenos_Aires",
+        ownerUserId: "test-owner",
+      },
+    });
+    testAcademyId = academy.id;
   });
 
   // ============================================================================
@@ -57,27 +72,26 @@ describe("PaymentsService Integration Tests", () => {
     charges: Charge[];
     invoice: Invoice;
   }> {
-    // Crear estudiante
     const student = await prisma.student.create({
       data: {
         firstName: "Test",
         lastName: "Student",
         email: `test${Date.now()}@example.com`,
         status: "ENABLED",
+        academyId: testAcademyId,
       },
     });
 
-    // Crear fee
     const fee = await prisma.fee.create({
       data: {
         description: "Test Fee",
         type: "MONTHLY",
         startDate: new Date("2026-01-01"),
         cost: 1000,
+        academyId: testAcademyId,
       },
     });
 
-    // Crear charges
     const charges: Charge[] = [];
     for (const [i, amount] of amounts.entries()) {
       const charge = await prisma.charge.create({
@@ -95,21 +109,20 @@ describe("PaymentsService Integration Tests", () => {
       charges.push(charge);
     }
 
-    // Calcular total
-    const total = amounts.reduce((sum, amt) => sum + amt, 0);
-
-    // Crear invoice
-    const invoiceData = await invoicesService.createInvoice({
-      studentId: student.id,
-      recipientName: `${student.firstName} ${student.lastName}`,
-      recipientEmail: student.email,
-      issueDate: new Date("2026-01-01"),
-      dueDate: new Date("2026-01-15"),
-      lines: charges.map((c) => ({
-        type: "CHARGE" as const,
-        chargeId: c.id,
-      })),
-    });
+    const invoiceData = await invoicesService.createInvoice(
+      {
+        studentId: student.id,
+        recipientName: `${student.firstName} ${student.lastName}`,
+        recipientEmail: student.email,
+        issueDate: new Date("2026-01-01"),
+        dueDate: new Date("2026-01-15"),
+        lines: charges.map((c) => ({
+          type: "CHARGE" as const,
+          chargeId: c.id,
+        })),
+      },
+      testAcademyId,
+    );
 
     const invoice = await prisma.invoice.findUniqueOrThrow({
       where: { id: invoiceData.id },
@@ -148,12 +161,15 @@ describe("PaymentsService Integration Tests", () => {
   it("P01: Pagar monto total marca invoice como PAID sin crear crédito", async () => {
     const { invoice } = await seedInvoiceWithCharges([1000, 2000]);
 
-    const result = await paymentsService.addPayment({
-      invoiceId: invoice.id,
-      amount: 3000,
-      method: PaymentMethod.CASH,
-      paidAt: new Date(),
-    });
+    const result = await paymentsService.addPayment(
+      {
+        invoiceId: invoice.id,
+        amount: 3000,
+        method: PaymentMethod.CASH,
+        paidAt: new Date(),
+      },
+      testAcademyId,
+    );
 
     expectInvoice(result, {
       total: 3000,
@@ -162,7 +178,6 @@ describe("PaymentsService Integration Tests", () => {
       status: InvoiceStatus.PAID,
     });
 
-    // Verificar payment creado
     const payment = await prisma.payment.findFirst({
       where: { invoiceId: invoice.id },
     });
@@ -170,7 +185,6 @@ describe("PaymentsService Integration Tests", () => {
     expect(payment.status).toBe("APPROVED");
     expect(payment.amount).toBe(3000);
 
-    // No debe haber crédito
     const credit = await prisma.studentCredit.findFirst({
       where: { sourcePaymentId: payment.id },
     });
@@ -184,12 +198,15 @@ describe("PaymentsService Integration Tests", () => {
   it("P02: Pago parcial marca invoice como PARTIALLY_PAID", async () => {
     const { invoice } = await seedInvoiceWithCharges([1000, 2000]);
 
-    const result = await paymentsService.addPayment({
-      invoiceId: invoice.id,
-      amount: 1000,
-      method: PaymentMethod.BANK_TRANSFER,
-      paidAt: new Date(),
-    });
+    const result = await paymentsService.addPayment(
+      {
+        invoiceId: invoice.id,
+        amount: 1000,
+        method: PaymentMethod.BANK_TRANSFER,
+        paidAt: new Date(),
+      },
+      testAcademyId,
+    );
 
     expectInvoice(result, {
       total: 3000,
@@ -206,20 +223,24 @@ describe("PaymentsService Integration Tests", () => {
   it("P03: voidInvoice anula payments, créditos y libera charges", async () => {
     const { invoice, charges } = await seedInvoiceWithCharges([1000, 2000]);
 
-    // Hacer un pago
-    await paymentsService.addPayment({
-      invoiceId: invoice.id,
-      amount: 1000,
-      method: PaymentMethod.CASH,
-      paidAt: new Date(),
-    });
+    await paymentsService.addPayment(
+      {
+        invoiceId: invoice.id,
+        amount: 1000,
+        method: PaymentMethod.CASH,
+        paidAt: new Date(),
+      },
+      testAcademyId,
+    );
 
     const payment = await prisma.payment.findFirstOrThrow({
       where: { invoiceId: invoice.id },
     });
 
-    // Anular invoice
-    const result = await invoicesService.voidInvoice(invoice.id);
+    const result = await invoicesService.voidInvoice(
+      invoice.id,
+      testAcademyId,
+    );
 
     expectInvoice(result, {
       status: InvoiceStatus.VOID,
@@ -227,13 +248,11 @@ describe("PaymentsService Integration Tests", () => {
       balance: 0,
     });
 
-    // Verificar payment anulado
     const voidedPayment = await prisma.payment.findUniqueOrThrow({
       where: { id: payment.id },
     });
     expect(voidedPayment.status).toBe("VOID");
 
-    // Verificar charges liberados
     for (const charge of charges) {
       const updatedCharge = await prisma.charge.findUniqueOrThrow({
         where: { id: charge.id },
@@ -249,12 +268,15 @@ describe("PaymentsService Integration Tests", () => {
   it("P04: Overpay marca invoice PAID y crea StudentCredit", async () => {
     const { invoice, student } = await seedInvoiceWithCharges([1000, 2000]);
 
-    const result = await paymentsService.addPayment({
-      invoiceId: invoice.id,
-      amount: 4000,
-      method: PaymentMethod.CARD,
-      paidAt: new Date(),
-    });
+    const result = await paymentsService.addPayment(
+      {
+        invoiceId: invoice.id,
+        amount: 4000,
+        method: PaymentMethod.CARD,
+        paidAt: new Date(),
+      },
+      testAcademyId,
+    );
 
     expectInvoice(result, {
       total: 3000,
@@ -267,7 +289,6 @@ describe("PaymentsService Integration Tests", () => {
       where: { invoiceId: invoice.id },
     });
 
-    // Verificar crédito creado
     const credit = await prisma.studentCredit.findFirstOrThrow({
       where: { sourcePaymentId: payment.id },
     });
@@ -286,18 +307,24 @@ describe("PaymentsService Integration Tests", () => {
   it("P05: Pago parcial + voidInvoice anula payment y libera charges", async () => {
     const { invoice, charges } = await seedInvoiceWithCharges([1000, 2000]);
 
-    await paymentsService.addPayment({
-      invoiceId: invoice.id,
-      amount: 1000,
-      method: PaymentMethod.CASH,
-      paidAt: new Date(),
-    });
+    await paymentsService.addPayment(
+      {
+        invoiceId: invoice.id,
+        amount: 1000,
+        method: PaymentMethod.CASH,
+        paidAt: new Date(),
+      },
+      testAcademyId,
+    );
 
     const payment = await prisma.payment.findFirstOrThrow({
       where: { invoiceId: invoice.id },
     });
 
-    const result = await invoicesService.voidInvoice(invoice.id);
+    const result = await invoicesService.voidInvoice(
+      invoice.id,
+      testAcademyId,
+    );
 
     expectInvoice(result, {
       status: InvoiceStatus.VOID,
@@ -305,13 +332,11 @@ describe("PaymentsService Integration Tests", () => {
       balance: 0,
     });
 
-    // Payment anulado
     const voidedPayment = await prisma.payment.findUniqueOrThrow({
       where: { id: payment.id },
     });
     expect(voidedPayment.status).toBe("VOID");
 
-    // Charges liberados
     for (const charge of charges) {
       const updatedCharge = await prisma.charge.findUniqueOrThrow({
         where: { id: charge.id },
@@ -327,21 +352,25 @@ describe("PaymentsService Integration Tests", () => {
   it("P06: Dos pagos donde el segundo excede crea crédito por el excedente", async () => {
     const { invoice, student } = await seedInvoiceWithCharges([1000]);
 
-    // Primer pago parcial
-    await paymentsService.addPayment({
-      invoiceId: invoice.id,
-      amount: 500,
-      method: PaymentMethod.CASH,
-      paidAt: new Date(),
-    });
+    await paymentsService.addPayment(
+      {
+        invoiceId: invoice.id,
+        amount: 500,
+        method: PaymentMethod.CASH,
+        paidAt: new Date(),
+      },
+      testAcademyId,
+    );
 
-    // Segundo pago que excede
-    const result = await paymentsService.addPayment({
-      invoiceId: invoice.id,
-      amount: 1000,
-      method: PaymentMethod.BANK_TRANSFER,
-      paidAt: new Date(),
-    });
+    const result = await paymentsService.addPayment(
+      {
+        invoiceId: invoice.id,
+        amount: 1000,
+        method: PaymentMethod.BANK_TRANSFER,
+        paidAt: new Date(),
+      },
+      testAcademyId,
+    );
 
     expectInvoice(result, {
       total: 1000,
@@ -350,7 +379,6 @@ describe("PaymentsService Integration Tests", () => {
       status: InvoiceStatus.PAID,
     });
 
-    // Verificar crédito creado
     const credits = await prisma.studentCredit.findMany({
       where: { studentId: student.id },
     });
@@ -368,21 +396,27 @@ describe("PaymentsService Integration Tests", () => {
   it("P07: voidPayment de pago total devuelve invoice a ISSUED", async () => {
     const { invoice } = await seedInvoiceWithCharges([1000, 2000]);
 
-    await paymentsService.addPayment({
-      invoiceId: invoice.id,
-      amount: 3000,
-      method: PaymentMethod.CASH,
-      paidAt: new Date(),
-    });
+    await paymentsService.addPayment(
+      {
+        invoiceId: invoice.id,
+        amount: 3000,
+        method: PaymentMethod.CASH,
+        paidAt: new Date(),
+      },
+      testAcademyId,
+    );
 
     const payment = await prisma.payment.findFirstOrThrow({
       where: { invoiceId: invoice.id },
     });
 
-    const result = await paymentsService.voidPayment({
-      paymentId: payment.id,
-      reason: "Error",
-    });
+    const result = await paymentsService.voidPayment(
+      {
+        paymentId: payment.id,
+        reason: "Error",
+      },
+      testAcademyId,
+    );
 
     expectInvoice(result, {
       total: 3000,
@@ -391,7 +425,6 @@ describe("PaymentsService Integration Tests", () => {
       status: InvoiceStatus.ISSUED,
     });
 
-    // Payment anulado
     const voidedPayment = await prisma.payment.findUniqueOrThrow({
       where: { id: payment.id },
     });
@@ -405,32 +438,36 @@ describe("PaymentsService Integration Tests", () => {
   it("P08: No permite editar descuentos ni remover líneas con payments APPROVED", async () => {
     const { invoice } = await seedInvoiceWithCharges([1000, 2000]);
 
-    // Agregar pago
-    await paymentsService.addPayment({
-      invoiceId: invoice.id,
-      amount: 1,
-      method: PaymentMethod.CASH,
-      paidAt: new Date(),
-    });
+    await paymentsService.addPayment(
+      {
+        invoiceId: invoice.id,
+        amount: 1,
+        method: PaymentMethod.CASH,
+        paidAt: new Date(),
+      },
+      testAcademyId,
+    );
 
-    // Obtener una línea
     const line = await prisma.invoiceLine.findFirstOrThrow({
       where: { invoiceId: invoice.id, isActive: true },
     });
 
-    // Intentar actualizar descuento
     await expect(
-      invoicesService.updateInvoiceLine({
-        lineId: line.id,
-        discountType: "PERCENT",
-        discountValue: 10,
-      }),
+      invoicesService.updateInvoiceLine(
+        {
+          lineId: line.id,
+          discountType: "PERCENT",
+          discountValue: 10,
+        },
+        testAcademyId,
+      ),
     ).rejects.toThrow(
       "No se puede modificar una factura con pagos registrados",
     );
 
-    // Intentar remover línea
-    await expect(invoicesService.removeInvoiceLine(line.id)).rejects.toThrow(
+    await expect(
+      invoicesService.removeInvoiceLine(line.id, testAcademyId),
+    ).rejects.toThrow(
       "No se puede modificar una factura con pagos registrados",
     );
   }, 15_000);
@@ -444,7 +481,6 @@ describe("PaymentsService Integration Tests", () => {
       1000, 2000,
     ]);
 
-    // Crear nuevo charge
     const newCharge = await prisma.charge.create({
       data: {
         feeId: fee.id,
@@ -458,14 +494,16 @@ describe("PaymentsService Integration Tests", () => {
       },
     });
 
-    // Agregar línea
-    const result = await invoicesService.addInvoiceLine({
-      invoiceId: invoice.id,
-      line: {
-        type: "CHARGE",
-        chargeId: newCharge.id,
+    const result = await invoicesService.addInvoiceLine(
+      {
+        invoiceId: invoice.id,
+        line: {
+          type: "CHARGE",
+          chargeId: newCharge.id,
+        },
       },
-    });
+      testAcademyId,
+    );
 
     expectInvoice(result, {
       total: 3700,
@@ -474,7 +512,6 @@ describe("PaymentsService Integration Tests", () => {
       status: InvoiceStatus.ISSUED,
     });
 
-    // Verificar charge marcado como INVOICED
     const updatedCharge = await prisma.charge.findUniqueOrThrow({
       where: { id: newCharge.id },
     });
@@ -490,15 +527,16 @@ describe("PaymentsService Integration Tests", () => {
       1000, 2000,
     ]);
 
-    // Agregar pago
-    await paymentsService.addPayment({
-      invoiceId: invoice.id,
-      amount: 1000,
-      method: PaymentMethod.CASH,
-      paidAt: new Date(),
-    });
+    await paymentsService.addPayment(
+      {
+        invoiceId: invoice.id,
+        amount: 1000,
+        method: PaymentMethod.CASH,
+        paidAt: new Date(),
+      },
+      testAcademyId,
+    );
 
-    // Crear nuevo charge
     const newCharge = await prisma.charge.create({
       data: {
         feeId: fee.id,
@@ -512,15 +550,17 @@ describe("PaymentsService Integration Tests", () => {
       },
     });
 
-    // Intentar agregar línea
     await expect(
-      invoicesService.addInvoiceLine({
-        invoiceId: invoice.id,
-        line: {
-          type: "CHARGE",
-          chargeId: newCharge.id,
+      invoicesService.addInvoiceLine(
+        {
+          invoiceId: invoice.id,
+          line: {
+            type: "CHARGE",
+            chargeId: newCharge.id,
+          },
         },
-      }),
+        testAcademyId,
+      ),
     ).rejects.toThrow(
       "No se puede modificar una factura con pagos registrados",
     );
@@ -533,17 +573,18 @@ describe("PaymentsService Integration Tests", () => {
   it("P11: No permite crear pago en invoice VOID", async () => {
     const { invoice } = await seedInvoiceWithCharges([1000, 2000]);
 
-    // Anular invoice
-    await invoicesService.voidInvoice(invoice.id);
+    await invoicesService.voidInvoice(invoice.id, testAcademyId);
 
-    // Intentar pagar
     await expect(
-      paymentsService.addPayment({
-        invoiceId: invoice.id,
-        amount: 1000,
-        method: PaymentMethod.CASH,
-        paidAt: new Date(),
-      }),
+      paymentsService.addPayment(
+        {
+          invoiceId: invoice.id,
+          amount: 1000,
+          method: PaymentMethod.CASH,
+          paidAt: new Date(),
+        },
+        testAcademyId,
+      ),
     ).rejects.toThrow("No se puede agregar pagos a una factura anulada");
   }, 10_000);
 
@@ -554,30 +595,33 @@ describe("PaymentsService Integration Tests", () => {
   it("P12: voidPayment con overpay anula el crédito generado", async () => {
     const { invoice, student } = await seedInvoiceWithCharges([1000, 2000]);
 
-    // Pago con overpay
-    await paymentsService.addPayment({
-      invoiceId: invoice.id,
-      amount: 4000,
-      method: PaymentMethod.CASH,
-      paidAt: new Date(),
-    });
+    await paymentsService.addPayment(
+      {
+        invoiceId: invoice.id,
+        amount: 4000,
+        method: PaymentMethod.CASH,
+        paidAt: new Date(),
+      },
+      testAcademyId,
+    );
 
     const payment = await prisma.payment.findFirstOrThrow({
       where: { invoiceId: invoice.id },
     });
 
-    // Verificar crédito creado
     let credit = await prisma.studentCredit.findFirstOrThrow({
       where: { sourcePaymentId: payment.id },
     });
     expect(credit.status).toBe("AVAILABLE");
     expect(credit.amount).toBe(1000);
 
-    // Anular payment
-    const result = await paymentsService.voidPayment({
-      paymentId: payment.id,
-      reason: "Error",
-    });
+    const result = await paymentsService.voidPayment(
+      {
+        paymentId: payment.id,
+        reason: "Error",
+      },
+      testAcademyId,
+    );
 
     expectInvoice(result, {
       total: 3000,
@@ -586,7 +630,6 @@ describe("PaymentsService Integration Tests", () => {
       status: InvoiceStatus.ISSUED,
     });
 
-    // Verificar crédito anulado
     credit = await prisma.studentCredit.findFirstOrThrow({
       where: { id: credit.id },
     });

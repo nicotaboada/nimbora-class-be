@@ -6,6 +6,8 @@
 .env.test.local
 .env.production.local
 .env.development
+
+.trigger/
 # .env.test  <- NO ignorar este
 .env.production
 .env.example

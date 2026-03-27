@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { INestApplication, BadRequestException } from "@nestjs/common";
 import { FeesService } from "./fees.service";
 import { ChargesService } from "../charges/charges.service";
+import { StudentsService } from "../students/students.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { FeeType, FeePeriod, ChargeStatus } from "@prisma/client";
 import {
@@ -16,6 +17,7 @@ describe("FeesService (integration)", () => {
   let feesService: FeesService;
   let chargesService: ChargesService;
   let prismaService: TestPrismaService;
+  let testAcademyId: string;
 
   beforeAll(async () => {
     prismaService = await getTestPrismaService();
@@ -24,6 +26,7 @@ describe("FeesService (integration)", () => {
       providers: [
         FeesService,
         ChargesService,
+        StudentsService,
         {
           provide: PrismaService,
           useValue: prismaService,
@@ -47,6 +50,20 @@ describe("FeesService (integration)", () => {
     await prismaService.charge.deleteMany();
     await prismaService.fee.deleteMany();
     await prismaService.student.deleteMany();
+    await prismaService.academy.deleteMany();
+
+    // Crear Academy para tests
+    const academy = await prismaService.academy.create({
+      data: {
+        name: "Test Academy",
+        slug: "test-academy",
+        country: "AR",
+        currency: "ARS",
+        timezone: "America/Argentina/Buenos_Aires",
+        ownerUserId: "test-owner",
+      },
+    });
+    testAcademyId = academy.id;
   });
 
   /**
@@ -58,6 +75,7 @@ describe("FeesService (integration)", () => {
         firstName: "Test",
         lastName: "Student",
         email,
+        academyId: testAcademyId,
         updatedAt: new Date(),
       },
     });
@@ -68,11 +86,14 @@ describe("FeesService (integration)", () => {
       const inputDescription = "Matrícula 2026";
       const inputStartDate = new Date("2026-01-15");
       const inputCost = 15_000;
-      const result = await feesService.createOneOffFee({
-        description: inputDescription,
-        startDate: inputStartDate,
-        cost: inputCost,
-      });
+      const result = await feesService.createOneOffFee(
+        {
+          description: inputDescription,
+          startDate: inputStartDate,
+          cost: inputCost,
+        },
+        testAcademyId,
+      );
       expect(result).toBeDefined();
       expect(result.id).toBeDefined();
       expect(result.description).toBe(inputDescription);
@@ -102,12 +123,15 @@ describe("FeesService (integration)", () => {
       const inputCost = 20_000;
       const inputOccurrences = 12;
       const expectedTotal = inputCost * inputOccurrences;
-      const result = await feesService.createMonthlyFee({
-        description: inputDescription,
-        startDate: inputStartDate,
-        cost: inputCost,
-        occurrences: inputOccurrences,
-      });
+      const result = await feesService.createMonthlyFee(
+        {
+          description: inputDescription,
+          startDate: inputStartDate,
+          cost: inputCost,
+          occurrences: inputOccurrences,
+        },
+        testAcademyId,
+      );
       expect(result).toBeDefined();
       expect(result.id).toBeDefined();
       expect(result.description).toBe(inputDescription);
@@ -138,13 +162,16 @@ describe("FeesService (integration)", () => {
       const inputOccurrences = 6;
       const inputPeriod = FeePeriod.EVERY_2_MONTHS;
       const expectedTotal = inputCost * inputOccurrences;
-      const result = await feesService.createPeriodicFee({
-        description: inputDescription,
-        startDate: inputStartDate,
-        cost: inputCost,
-        occurrences: inputOccurrences,
-        period: inputPeriod,
-      });
+      const result = await feesService.createPeriodicFee(
+        {
+          description: inputDescription,
+          startDate: inputStartDate,
+          cost: inputCost,
+          occurrences: inputOccurrences,
+          period: inputPeriod,
+        },
+        testAcademyId,
+      );
       expect(result).toBeDefined();
       expect(result.id).toBeDefined();
       expect(result.description).toBe(inputDescription);
@@ -170,23 +197,29 @@ describe("FeesService (integration)", () => {
   describe("remove fee with charges", () => {
     it("should delete fee and all PENDING charges when all charges are PENDING", async () => {
       // Crear fee
-      const fee = await feesService.createMonthlyFee({
-        description: "Fee para borrar",
-        startDate: new Date("2026-01-15"),
-        cost: 10_000,
-        occurrences: 3,
-      });
+      const fee = await feesService.createMonthlyFee(
+        {
+          description: "Fee para borrar",
+          startDate: new Date("2026-01-15"),
+          cost: 10_000,
+          occurrences: 3,
+        },
+        testAcademyId,
+      );
 
       // Crear estudiantes
       const student1 = await createTestStudent("student1@example.com");
       const student2 = await createTestStudent("student2@example.com");
 
       // Asignar fee a estudiantes
-      await chargesService.assignFeeToStudents({
-        feeId: fee.id,
-        studentIds: [student1.id, student2.id],
-        startMonth: ChargeStartMonth.NEXT_MONTH,
-      });
+      await chargesService.assignFeeToStudents(
+        {
+          feeId: fee.id,
+          studentIds: [student1.id, student2.id],
+          startMonth: ChargeStartMonth.NEXT_MONTH,
+        },
+        testAcademyId,
+      );
 
       // Verificar que se crearon 6 cargos (2 estudiantes × 3 cuotas)
       const chargesBeforeDelete = await prismaService.charge.findMany({
@@ -195,7 +228,7 @@ describe("FeesService (integration)", () => {
       expect(chargesBeforeDelete).toHaveLength(6);
 
       // Borrar el fee
-      const deletedFee = await feesService.remove(fee.id);
+      const deletedFee = await feesService.remove(fee.id, testAcademyId);
       expect(deletedFee.id).toBe(fee.id);
 
       // Verificar que el fee fue borrado
@@ -213,35 +246,41 @@ describe("FeesService (integration)", () => {
 
     it("should throw BadRequestException when trying to delete fee with INVOICED charges", async () => {
       // Crear fee
-      const fee = await feesService.createMonthlyFee({
-        description: "Fee con cargos facturados",
-        startDate: new Date("2026-01-15"),
-        cost: 15_000,
-        occurrences: 2,
-      });
+      const fee = await feesService.createMonthlyFee(
+        {
+          description: "Fee con cargos facturados",
+          startDate: new Date("2026-01-15"),
+          cost: 15_000,
+          occurrences: 2,
+        },
+        testAcademyId,
+      );
 
       // Crear estudiantes
       const student1 = await createTestStudent("student1@example.com");
       const student2 = await createTestStudent("student2@example.com");
 
       // Asignar fee a estudiantes
-      await chargesService.assignFeeToStudents({
-        feeId: fee.id,
-        studentIds: [student1.id, student2.id],
-        startMonth: ChargeStartMonth.NEXT_MONTH,
-      });
+      await chargesService.assignFeeToStudents(
+        {
+          feeId: fee.id,
+          studentIds: [student1.id, student2.id],
+          startMonth: ChargeStartMonth.NEXT_MONTH,
+        },
+        testAcademyId,
+      );
 
       // Hardcodear uno de los cargos a INVOICED
       const chargeToInvoice = await prismaService.charge.findFirst({
         where: { feeId: fee.id, studentId: student1.id },
       });
       await prismaService.charge.update({
-        where: { id: chargeToInvoice!.id },
+        where: { id: chargeToInvoice.id },
         data: { status: ChargeStatus.INVOICED },
       });
 
       // Intentar borrar el fee - debe fallar
-      await expect(feesService.remove(fee.id)).rejects.toThrow(
+      await expect(feesService.remove(fee.id, testAcademyId)).rejects.toThrow(
         BadRequestException,
       );
 
@@ -263,20 +302,26 @@ describe("FeesService (integration)", () => {
       const updatedCost = 25_000;
 
       // Crear fee
-      const fee = await feesService.createMonthlyFee({
-        description: "Fee para editar",
-        startDate: new Date("2026-01-15"),
-        cost: originalCost,
-        occurrences: 2,
-      });
+      const fee = await feesService.createMonthlyFee(
+        {
+          description: "Fee para editar",
+          startDate: new Date("2026-01-15"),
+          cost: originalCost,
+          occurrences: 2,
+        },
+        testAcademyId,
+      );
 
       // Crear estudiante y asignar fee
       const student = await createTestStudent();
-      await chargesService.assignFeeToStudents({
-        feeId: fee.id,
-        studentIds: [student.id],
-        startMonth: ChargeStartMonth.NEXT_MONTH,
-      });
+      await chargesService.assignFeeToStudents(
+        {
+          feeId: fee.id,
+          studentIds: [student.id],
+          startMonth: ChargeStartMonth.NEXT_MONTH,
+        },
+        testAcademyId,
+      );
 
       // Verificar que los cargos tienen el costo original
       const chargesBeforeUpdate = await prismaService.charge.findMany({
@@ -288,10 +333,13 @@ describe("FeesService (integration)", () => {
       }
 
       // Editar el fee (template)
-      const updatedFee = await feesService.updateMonthlyFee({
-        id: fee.id,
-        cost: updatedCost,
-      });
+      const updatedFee = await feesService.updateMonthlyFee(
+        {
+          id: fee.id,
+          cost: updatedCost,
+        },
+        testAcademyId,
+      );
 
       // Verificar que el fee template tiene el nuevo valor
       expect(updatedFee.cost).toBe(updatedCost);

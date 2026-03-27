@@ -251,6 +251,80 @@ enum BillingTaxCondition {
   RESPONSABLE_INSCRIPTO
 }
 
+input BulkCreateInvoicesInput {
+  """Fecha de vencimiento para todas las facturas"""
+  dueDate: DateTime!
+
+  """Lista de estudiantes con sus charges a facturar"""
+  items: [BulkInvoiceItemInput!]!
+
+  """Enviar notificación a los estudiantes al crear las facturas"""
+  notify: Boolean! = false
+}
+
+input BulkInvoiceItemInput {
+  """IDs de los charges a facturar"""
+  chargeIds: [String!]!
+
+  """ID del estudiante"""
+  studentId: String!
+}
+
+type BulkOperation {
+  completedAt: DateTime
+
+  """Items completados exitosamente"""
+  completedItems: Int!
+  createdAt: DateTime!
+
+  """Items que fallaron"""
+  failedItems: Int!
+  id: String!
+
+  """Detalle por estudiante"""
+  results: [BulkOperationResult!]!
+
+  """Items salteados (sin charges)"""
+  skippedItems: Int!
+  startedAt: DateTime
+  status: BulkOperationStatus!
+
+  """Total de items a procesar"""
+  totalItems: Int!
+  type: BulkOperationType!
+}
+
+type BulkOperationResult {
+  """Detalle del error si falló"""
+  error: String
+
+  """ID de la factura creada"""
+  invoiceId: String
+
+  """Estado del item: created, skipped, failed"""
+  status: String!
+
+  """ID del estudiante procesado"""
+  studentId: String!
+
+  """Nombre del estudiante"""
+  studentName: String!
+}
+
+"""Estado de una operación bulk"""
+enum BulkOperationStatus {
+  COMPLETED
+  FAILED
+  PENDING
+  PROCESSING
+}
+
+"""Tipo de operación bulk"""
+enum BulkOperationType {
+  BULK_AFIP
+  BULK_INVOICE
+}
+
 type Charge {
   """Monto en centavos (snapshot del Fee.cost)"""
   amount: Int!
@@ -666,6 +740,11 @@ type Mutation {
   """Asigna un fee a estudiantes"""
   assignFeeToStudents(input: AssignFeeInput!): AssignFeeOutput!
 
+  """
+  Genera facturas en bulk. Retorna el operationId para polling de estado.
+  """
+  bulkCreateInvoices(input: BulkCreateInvoicesInput!): BulkOperation!
+
   """Step 2: Confirma que delegó en ARCA y avanza a DELEGATION_2"""
   confirmAfipDelegationReady: AcademyAfipSettings!
   createAcademy(input: CreateAcademyInput!): Academy!
@@ -686,7 +765,7 @@ type Mutation {
   """Elimina un punto de venta AFIP (no se puede eliminar si está activo)"""
   deleteAfipSalesPoint(
     """ID del punto de venta a eliminar"""
-    id: String!
+    id: ID!
   ): Boolean!
   deleteFee(id: ID!): Fee!
   removeAcademy(id: String!): Academy!
@@ -709,6 +788,9 @@ type Mutation {
     """ID del punto de venta"""
     id: String!
   ): AfipSalesPoint!
+
+  """Desasigna un fee de un estudiante cancelando sus cuotas pendientes"""
+  unassignFeeFromStudent(input: UnassignFeeInput!): UnassignFeeOutput!
   updateAcademy(input: UpdateAcademyInput!): Academy!
 
   """Edita el nombre de un punto de venta AFIP"""
@@ -769,6 +851,14 @@ type PaginatedInvoices {
 type PaginatedStudents {
   """Lista de estudiantes"""
   data: [Student!]!
+
+  """Metadata de paginación"""
+  meta: PaginationMeta!
+}
+
+type PaginatedStudentsForBulkInvoice {
+  """Lista de items"""
+  data: [StudentBulkInvoicePreview!]!
 
   """Metadata de paginación"""
   meta: PaginationMeta!
@@ -890,6 +980,9 @@ type Query {
     studentId: String!
   ): [BillingProfile!]!
 
+  """Obtiene el estado actual de una operación bulk"""
+  bulkOperation(id: ID!): BulkOperation!
+
   """Obtiene todos los cargos de un estudiante"""
   chargesByStudent(studentId: String!): [Charge!]!
 
@@ -926,6 +1019,11 @@ type Query {
   paymentsByInvoice(invoiceId: ID!): [Payment!]!
   student(id: String!): Student!
 
+  """
+  Resumen financiero del estudiante: totales y últimos cargos por categoría
+  """
+  studentChargesOverview(studentId: String!): StudentChargesOverview!
+
   """Suma de créditos disponibles de un estudiante (en centavos)"""
   studentCreditBalance(studentId: ID!): Int!
 
@@ -942,8 +1040,14 @@ type Query {
 
   """Obtiene IDs de estudiantes que ya tienen un fee asignado"""
   studentIdsWithFee(feeId: String!): [String!]!
+
+  """Overview financiero de un alumno: facturas impagas/pagadas y totales"""
+  studentInvoiceOverview(studentId: ID!): StudentInvoiceOverview!
   studentStats: StudentStats!
   students(limit: Int = 10, page: Int = 1, search: String, status: StudentStatus): PaginatedStudents!
+
+  """Estudiantes con charges pendientes para facturación masiva (paginado)"""
+  studentsForBulkInvoice(input: StudentsForBulkInvoiceInput!, limit: Int = 10, page: Int = 1): PaginatedStudentsForBulkInvoice!
   user(id: String!): User
   userBySupabaseId(supabaseUserId: String!): User
   users: [User!]!
@@ -975,6 +1079,44 @@ type Student {
   phoneNumber: String
   status: StudentStatus!
   updatedAt: DateTime!
+}
+
+type StudentBulkInvoicePreview {
+  """Cantidad de charges PENDING que matchean el filtro"""
+  chargeCount: Int!
+
+  """IDs de los charges (para pasar a bulkCreateInvoices)"""
+  chargeIds: [String!]!
+  email: String!
+  firstName: String!
+  lastName: String!
+
+  """ID del estudiante"""
+  studentId: String!
+
+  """Suma total de los montos en centavos"""
+  totalAmount: Int!
+}
+
+type StudentChargesOverview {
+  """Los 3 cargos facturados más recientes (ordenados por dueDate DESC)"""
+  invoicedCharges: [Charge!]!
+
+  """Total en centavos de cargos facturados (INVOICED o PAID)"""
+  invoicedTotal: Int!
+
+  """
+  Los 3 cargos más urgentes que requieren facturación (ordenados por dueDate ASC)
+  """
+  requiresInvoicingCharges: [Charge!]!
+
+  """
+  Total en centavos de cargos que requieren facturación (PENDING con issueDate <= hoy)
+  """
+  requiresInvoicingTotal: Int!
+
+  """Total general en centavos (requiresInvoicingTotal + invoicedTotal)"""
+  totalAmount: Int!
 }
 
 """Crédito a favor de un estudiante"""
@@ -1078,6 +1220,20 @@ input StudentFeeOverviewFilter {
   invoicingStatus: FeeInvoicingStatus
 }
 
+type StudentInvoiceOverview {
+  """Las 3 facturas pagadas más recientes"""
+  paidInvoices: [Invoice!]!
+
+  """Total pagado de todas las facturas pagadas en centavos"""
+  totalPaidAmount: Int!
+
+  """Total adeudado (balance) de todas las facturas impagas en centavos"""
+  totalUnpaidAmount: Int!
+
+  """Las 3 facturas impagas más antiguas vencidas"""
+  unpaidInvoices: [Invoice!]!
+}
+
 type StudentStats {
   """Total de estudiantes activos (ENABLED)"""
   active: Int!
@@ -1093,6 +1249,17 @@ type StudentStats {
 enum StudentStatus {
   DISABLED
   ENABLED
+}
+
+input StudentsForBulkInvoiceInput {
+  """Incluir cargos pendientes de periodos anteriores al seleccionado"""
+  includePastDue: Boolean! = false
+
+  """Periodo de facturación (formato YYYY-MM)"""
+  period: String!
+
+  """Buscar por nombre o email"""
+  search: String
 }
 
 """Datos del contribuyente obtenidos de ARCA"""
@@ -1126,6 +1293,19 @@ type TaxpayerInfo {
 
   """Código postal"""
   zipCode: String
+}
+
+input UnassignFeeInput {
+  """ID del fee a desasignar"""
+  feeId: String!
+
+  """ID del estudiante"""
+  studentId: String!
+}
+
+type UnassignFeeOutput {
+  """Número de cuotas canceladas"""
+  cancelledCount: Int!
 }
 
 input UpdateAcademyInput {

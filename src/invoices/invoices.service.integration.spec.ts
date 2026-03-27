@@ -1,4 +1,5 @@
 import { InvoicesService } from "./invoices.service";
+import { StudentsService } from "../students/students.service";
 import {
   getTestPrismaService,
   disconnectTestPrisma,
@@ -17,7 +18,9 @@ import { ChargeStatus, InvoiceStatus } from "@prisma/client";
  */
 describe("InvoicesService (Integration)", () => {
   let service: InvoicesService;
+  let studentsService: StudentsService;
   let prisma: TestPrismaService;
+  let testAcademyId: string;
   let testStudentId: string;
   let testStudent2Id: string;
   let testFeeId: string;
@@ -28,7 +31,11 @@ describe("InvoicesService (Integration)", () => {
 
   beforeAll(async () => {
     prisma = await getTestPrismaService();
-    service = new InvoicesService(prisma as unknown as PrismaService);
+    studentsService = new StudentsService(prisma as unknown as PrismaService);
+    service = new InvoicesService(
+      prisma as unknown as PrismaService,
+      studentsService,
+    );
   }, 30_000);
 
   afterAll(async () => {
@@ -36,42 +43,50 @@ describe("InvoicesService (Integration)", () => {
   });
 
   beforeEach(async () => {
-    // TRUNCATE es más rápido que DELETE para limpiar tablas
     await prisma.$executeRawUnsafe(`
-      TRUNCATE TABLE "InvoiceLine", "Invoice", "Charge", "Fee", "Student" CASCADE
+      TRUNCATE TABLE "InvoiceLine", "Invoice", "Charge", "Fee", "Student", "Academy" CASCADE
     `);
 
-    // Crear datos usando una sola transacción (más rápido)
     const result = await prisma.$transaction(async (tx) => {
-      // Crear Student S1
+      const academy = await tx.academy.create({
+        data: {
+          name: "Test Academy",
+          slug: "test-academy",
+          country: "AR",
+          currency: "ARS",
+          timezone: "America/Argentina/Buenos_Aires",
+          ownerUserId: "test-owner",
+        },
+      });
+
       const student = await tx.student.create({
         data: {
           firstName: "Test",
           lastName: "Student",
           email: `test-${Date.now()}@example.com`,
+          academyId: academy.id,
         },
       });
 
-      // Crear Student S2 para tests de validación
       const student2 = await tx.student.create({
         data: {
           firstName: "Other",
           lastName: "Student",
           email: `other-${Date.now()}@example.com`,
+          academyId: academy.id,
         },
       });
 
-      // Crear Fee base
       const fee = await tx.fee.create({
         data: {
           description: "Cuota Mensual",
           type: "MONTHLY",
           startDate: new Date("2026-01-01"),
           cost: 10_000,
+          academyId: academy.id,
         },
       });
 
-      // Crear 4 Charges para S1 en batch
       const c1 = await tx.charge.create({
         data: {
           feeId: fee.id,
@@ -124,9 +139,10 @@ describe("InvoicesService (Integration)", () => {
         },
       });
 
-      return { student, student2, fee, c1, c2, c3, c4 };
+      return { academy, student, student2, fee, c1, c2, c3, c4 };
     });
 
+    testAcademyId = result.academy.id;
     testStudentId = result.student.id;
     testStudent2Id = result.student2.id;
     testFeeId = result.fee.id;
@@ -141,14 +157,17 @@ describe("InvoicesService (Integration)", () => {
   // ============================================================
   describe("A) Create Invoice - Happy paths", () => {
     it("T1 — Crear invoice sin descuentos (1 línea)", async () => {
-      const result = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        recipientEmail: "test@example.com",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [{ type: "CHARGE", chargeId: c1Id }],
-      });
+      const result = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          recipientEmail: "test@example.com",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [{ type: "CHARGE", chargeId: c1Id }],
+        },
+        testAcademyId,
+      );
 
       expect(result.status).toBe(InvoiceStatus.ISSUED);
       expect(result.subtotal).toBe(10_000);
@@ -161,24 +180,26 @@ describe("InvoicesService (Integration)", () => {
       expect(result.lines[0].discountValue).toBeUndefined();
       expect(result.lines[0].finalAmount).toBe(10_000);
 
-      // Verificar que C1.status = INVOICED
       const charge = await prisma.charge.findUnique({ where: { id: c1Id } });
       expect(charge?.status).toBe(ChargeStatus.INVOICED);
     });
 
     it("T2 — Crear invoice sin descuentos (4 líneas)", async () => {
-      const result = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [
-          { type: "CHARGE", chargeId: c1Id },
-          { type: "CHARGE", chargeId: c2Id },
-          { type: "CHARGE", chargeId: c3Id },
-          { type: "CHARGE", chargeId: c4Id },
-        ],
-      });
+      const result = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [
+            { type: "CHARGE", chargeId: c1Id },
+            { type: "CHARGE", chargeId: c2Id },
+            { type: "CHARGE", chargeId: c3Id },
+            { type: "CHARGE", chargeId: c4Id },
+          ],
+        },
+        testAcademyId,
+      );
 
       expect(result.subtotal).toBe(40_000);
       expect(result.totalDiscount).toBe(0);
@@ -188,7 +209,6 @@ describe("InvoicesService (Integration)", () => {
         result.lines.every((l) => l.finalAmount === l.originalAmount),
       ).toBe(true);
 
-      // Verificar que todos los charges están INVOICED
       const charges = await prisma.charge.findMany({
         where: { id: { in: [c1Id, c2Id, c3Id, c4Id] } },
       });
@@ -198,17 +218,20 @@ describe("InvoicesService (Integration)", () => {
     });
 
     it("T3 — Crear invoice con recipient OTHER (sin studentId)", async () => {
-      const result = await service.createInvoice({
-        recipientName: "Juan Perez",
-        recipientEmail: "juan@external.com",
-        recipientPhone: "+1234567890",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [
-          { type: "CHARGE", chargeId: c1Id },
-          { type: "CHARGE", chargeId: c2Id },
-        ],
-      });
+      const result = await service.createInvoice(
+        {
+          recipientName: "Juan Perez",
+          recipientEmail: "juan@external.com",
+          recipientPhone: "+1234567890",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [
+            { type: "CHARGE", chargeId: c1Id },
+            { type: "CHARGE", chargeId: c2Id },
+          ],
+        },
+        testAcademyId,
+      );
 
       expect(result.studentId).toBeUndefined();
       expect(result.recipientName).toBe("Juan Perez");
@@ -216,7 +239,6 @@ describe("InvoicesService (Integration)", () => {
       expect(result.total).toBe(20_000);
       expect(result.lines).toHaveLength(2);
 
-      // Verificar que los charges están INVOICED
       const charges = await prisma.charge.findMany({
         where: { id: { in: [c1Id, c2Id] } },
       });
@@ -226,38 +248,41 @@ describe("InvoicesService (Integration)", () => {
     });
 
     it("T4 — Crear invoice con descuentos percent (4 líneas 10%)", async () => {
-      const result = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [
-          {
-            type: "CHARGE",
-            chargeId: c1Id,
-            discountType: "PERCENT",
-            discountValue: 10,
-          },
-          {
-            type: "CHARGE",
-            chargeId: c2Id,
-            discountType: "PERCENT",
-            discountValue: 10,
-          },
-          {
-            type: "CHARGE",
-            chargeId: c3Id,
-            discountType: "PERCENT",
-            discountValue: 10,
-          },
-          {
-            type: "CHARGE",
-            chargeId: c4Id,
-            discountType: "PERCENT",
-            discountValue: 10,
-          },
-        ],
-      });
+      const result = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [
+            {
+              type: "CHARGE",
+              chargeId: c1Id,
+              discountType: "PERCENT",
+              discountValue: 10,
+            },
+            {
+              type: "CHARGE",
+              chargeId: c2Id,
+              discountType: "PERCENT",
+              discountValue: 10,
+            },
+            {
+              type: "CHARGE",
+              chargeId: c3Id,
+              discountType: "PERCENT",
+              discountValue: 10,
+            },
+            {
+              type: "CHARGE",
+              chargeId: c4Id,
+              discountType: "PERCENT",
+              discountValue: 10,
+            },
+          ],
+        },
+        testAcademyId,
+      );
 
       expect(result.subtotal).toBe(40_000);
       expect(result.totalDiscount).toBe(4000);
@@ -271,20 +296,23 @@ describe("InvoicesService (Integration)", () => {
     });
 
     it("T5 — Crear invoice con descuento FIXED ($1500)", async () => {
-      const result = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [
-          {
-            type: "CHARGE",
-            chargeId: c1Id,
-            discountType: "FIXED_AMOUNT",
-            discountValueFixed: 1500,
-          },
-        ],
-      });
+      const result = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [
+            {
+              type: "CHARGE",
+              chargeId: c1Id,
+              discountType: "FIXED_AMOUNT",
+              discountValueFixed: 1500,
+            },
+          ],
+        },
+        testAcademyId,
+      );
 
       expect(result.subtotal).toBe(10_000);
       expect(result.totalDiscount).toBe(1500);
@@ -298,18 +326,21 @@ describe("InvoicesService (Integration)", () => {
   // ============================================================
   describe("B) Manual lines", () => {
     it("T6 — Crear invoice con 3 charges y 1 line manual", async () => {
-      const result = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [
-          { type: "CHARGE", chargeId: c1Id },
-          { type: "CHARGE", chargeId: c2Id },
-          { type: "CHARGE", chargeId: c3Id },
-          { type: "MANUAL", description: "Materiales", originalAmount: 5000 },
-        ],
-      });
+      const result = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [
+            { type: "CHARGE", chargeId: c1Id },
+            { type: "CHARGE", chargeId: c2Id },
+            { type: "CHARGE", chargeId: c3Id },
+            { type: "MANUAL", description: "Materiales", originalAmount: 5000 },
+          ],
+        },
+        testAcademyId,
+      );
 
       expect(result.subtotal).toBe(35_000);
       expect(result.totalDiscount).toBe(0);
@@ -321,7 +352,6 @@ describe("InvoicesService (Integration)", () => {
       expect(manualLine?.chargeId).toBeUndefined();
       expect(manualLine?.description).toBe("Materiales");
 
-      // Verificar que C1,C2,C3 están INVOICED
       const charges = await prisma.charge.findMany({
         where: { id: { in: [c1Id, c2Id, c3Id] } },
       });
@@ -336,34 +366,33 @@ describe("InvoicesService (Integration)", () => {
   // ============================================================
   describe("C) Remove line / Re-invoice", () => {
     it("T7 — Remover una línea (invoice sin pagos)", async () => {
-      const invoice = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [
-          { type: "CHARGE", chargeId: c1Id },
-          { type: "CHARGE", chargeId: c2Id },
-          { type: "CHARGE", chargeId: c3Id },
-        ],
-      });
+      const invoice = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [
+            { type: "CHARGE", chargeId: c1Id },
+            { type: "CHARGE", chargeId: c2Id },
+            { type: "CHARGE", chargeId: c3Id },
+          ],
+        },
+        testAcademyId,
+      );
 
-      // Encontrar la línea de C2
       const lineC2 = invoice.lines.find((l) => l.chargeId === c2Id);
       expect(lineC2).toBeDefined();
 
-      const result = await service.removeInvoiceLine(lineC2.id);
+      const result = await service.removeInvoiceLine(lineC2.id, testAcademyId);
 
-      // Solo 2 líneas activas
       expect(result.lines).toHaveLength(2);
       expect(result.subtotal).toBe(20_000);
       expect(result.total).toBe(20_000);
 
-      // Verificar que C2 volvió a PENDING
       const charge = await prisma.charge.findUnique({ where: { id: c2Id } });
       expect(charge?.status).toBe(ChargeStatus.PENDING);
 
-      // Verificar que la línea existe pero isActive=false
       const allLines = await prisma.invoiceLine.findMany({
         where: { invoiceId: invoice.id },
       });
@@ -373,41 +402,42 @@ describe("InvoicesService (Integration)", () => {
     });
 
     it("T8 — Remover línea y luego crear nueva invoice con ese charge", async () => {
-      // Crear invoice inicial con C1, C2, C3
-      const invoice1 = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [
-          { type: "CHARGE", chargeId: c1Id },
-          { type: "CHARGE", chargeId: c2Id },
-          { type: "CHARGE", chargeId: c3Id },
-        ],
-      });
+      const invoice1 = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [
+            { type: "CHARGE", chargeId: c1Id },
+            { type: "CHARGE", chargeId: c2Id },
+            { type: "CHARGE", chargeId: c3Id },
+          ],
+        },
+        testAcademyId,
+      );
 
-      // Remover C2
       const lineC2 = invoice1.lines.find((l) => l.chargeId === c2Id);
-      await service.removeInvoiceLine(lineC2.id);
+      await service.removeInvoiceLine(lineC2.id, testAcademyId);
 
-      // Crear nueva invoice con C2
-      const invoice2 = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-15"),
-        dueDate: new Date("2026-01-31"),
-        lines: [{ type: "CHARGE", chargeId: c2Id }],
-      });
+      const invoice2 = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-15"),
+          dueDate: new Date("2026-01-31"),
+          lines: [{ type: "CHARGE", chargeId: c2Id }],
+        },
+        testAcademyId,
+      );
 
       expect(invoice2.id).toBeDefined();
       expect(invoice2.lines).toHaveLength(1);
       expect(invoice2.lines[0].chargeId).toBe(c2Id);
 
-      // C2 vuelve a INVOICED
       const charge = await prisma.charge.findUnique({ where: { id: c2Id } });
       expect(charge?.status).toBe(ChargeStatus.INVOICED);
 
-      // La línea histórica en invoice1 sigue isActive=false
       const oldLines = await prisma.invoiceLine.findMany({
         where: { invoiceId: invoice1.id, chargeId: c2Id },
       });
@@ -420,24 +450,26 @@ describe("InvoicesService (Integration)", () => {
   // ============================================================
   describe("D) VOID / Delete (soft delete)", () => {
     it("T9 — Void invoice sin pagos", async () => {
-      const invoice = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [
-          { type: "CHARGE", chargeId: c1Id },
-          { type: "CHARGE", chargeId: c2Id },
-          { type: "CHARGE", chargeId: c3Id },
-        ],
-      });
+      const invoice = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [
+            { type: "CHARGE", chargeId: c1Id },
+            { type: "CHARGE", chargeId: c2Id },
+            { type: "CHARGE", chargeId: c3Id },
+          ],
+        },
+        testAcademyId,
+      );
 
-      const result = await service.voidInvoice(invoice.id);
+      const result = await service.voidInvoice(invoice.id, testAcademyId);
 
       expect(result.status).toBe(InvoiceStatus.VOID);
-      expect(result.lines).toHaveLength(0); // Solo devuelve líneas activas
+      expect(result.lines).toHaveLength(0);
 
-      // Todos los charges vuelven a PENDING
       const charges = await prisma.charge.findMany({
         where: { id: { in: [c1Id, c2Id, c3Id] } },
       });
@@ -445,7 +477,6 @@ describe("InvoicesService (Integration)", () => {
         true,
       );
 
-      // Todas las líneas están inactivas
       const allLines = await prisma.invoiceLine.findMany({
         where: { invoiceId: invoice.id },
       });
@@ -453,35 +484,39 @@ describe("InvoicesService (Integration)", () => {
     });
 
     it("T10 — Void y luego re-facturar mismos charges", async () => {
-      const invoice1 = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [
-          { type: "CHARGE", chargeId: c1Id },
-          { type: "CHARGE", chargeId: c2Id },
-        ],
-      });
+      const invoice1 = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [
+            { type: "CHARGE", chargeId: c1Id },
+            { type: "CHARGE", chargeId: c2Id },
+          ],
+        },
+        testAcademyId,
+      );
 
-      await service.voidInvoice(invoice1.id);
+      await service.voidInvoice(invoice1.id, testAcademyId);
 
-      // Crear nueva invoice con C1, C2
-      const invoice2 = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-15"),
-        dueDate: new Date("2026-01-31"),
-        lines: [
-          { type: "CHARGE", chargeId: c1Id },
-          { type: "CHARGE", chargeId: c2Id },
-        ],
-      });
+      const invoice2 = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-15"),
+          dueDate: new Date("2026-01-31"),
+          lines: [
+            { type: "CHARGE", chargeId: c1Id },
+            { type: "CHARGE", chargeId: c2Id },
+          ],
+        },
+        testAcademyId,
+      );
 
       expect(invoice2.id).toBeDefined();
       expect(invoice2.lines).toHaveLength(2);
 
-      // C1, C2 vuelven a INVOICED
       const charges = await prisma.charge.findMany({
         where: { id: { in: [c1Id, c2Id] } },
       });
@@ -497,55 +532,64 @@ describe("InvoicesService (Integration)", () => {
   describe("E) Validaciones - Errores", () => {
     it("T11 — No permitir crear invoice sin líneas", async () => {
       await expect(
-        service.createInvoice({
-          studentId: testStudentId,
-          recipientName: "Test Student",
-          issueDate: new Date("2026-01-01"),
-          dueDate: new Date("2026-01-31"),
-          lines: [],
-        }),
+        service.createInvoice(
+          {
+            studentId: testStudentId,
+            recipientName: "Test Student",
+            issueDate: new Date("2026-01-01"),
+            dueDate: new Date("2026-01-31"),
+            lines: [],
+          },
+          testAcademyId,
+        ),
       ).rejects.toThrow();
     });
 
     it("T12 — No permitir chargeId duplicado en líneas", async () => {
       await expect(
-        service.createInvoice({
-          studentId: testStudentId,
-          recipientName: "Test Student",
-          issueDate: new Date("2026-01-01"),
-          dueDate: new Date("2026-01-31"),
-          lines: [
-            { type: "CHARGE", chargeId: c1Id },
-            { type: "CHARGE", chargeId: c1Id },
-          ],
-        }),
+        service.createInvoice(
+          {
+            studentId: testStudentId,
+            recipientName: "Test Student",
+            issueDate: new Date("2026-01-01"),
+            dueDate: new Date("2026-01-31"),
+            lines: [
+              { type: "CHARGE", chargeId: c1Id },
+              { type: "CHARGE", chargeId: c1Id },
+            ],
+          },
+          testAcademyId,
+        ),
       ).rejects.toThrow("Duplicate chargeId in lines");
     });
 
     it("T13 — No permitir charge no PENDING", async () => {
-      // Primero crear invoice que marque C1 como INVOICED
-      await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [{ type: "CHARGE", chargeId: c1Id }],
-      });
-
-      // Intentar usar C1 de nuevo
-      await expect(
-        service.createInvoice({
+      await service.createInvoice(
+        {
           studentId: testStudentId,
           recipientName: "Test Student",
-          issueDate: new Date("2026-01-15"),
+          issueDate: new Date("2026-01-01"),
           dueDate: new Date("2026-01-31"),
           lines: [{ type: "CHARGE", chargeId: c1Id }],
-        }),
+        },
+        testAcademyId,
+      );
+
+      await expect(
+        service.createInvoice(
+          {
+            studentId: testStudentId,
+            recipientName: "Test Student",
+            issueDate: new Date("2026-01-15"),
+            dueDate: new Date("2026-01-31"),
+            lines: [{ type: "CHARGE", chargeId: c1Id }],
+          },
+          testAcademyId,
+        ),
       ).rejects.toThrow(/no encontrados o no disponibles/);
     });
 
     it("T14 — No permitir charge de otro student", async () => {
-      // Crear charge para student2
       const chargeOther = await prisma.charge.create({
         data: {
           feeId: testFeeId,
@@ -560,27 +604,31 @@ describe("InvoicesService (Integration)", () => {
       });
 
       await expect(
-        service.createInvoice({
-          studentId: testStudentId,
-          recipientName: "Test Student",
-          issueDate: new Date("2026-01-01"),
-          dueDate: new Date("2026-01-31"),
-          lines: [{ type: "CHARGE", chargeId: chargeOther.id }],
-        }),
+        service.createInvoice(
+          {
+            studentId: testStudentId,
+            recipientName: "Test Student",
+            issueDate: new Date("2026-01-01"),
+            dueDate: new Date("2026-01-31"),
+            lines: [{ type: "CHARGE", chargeId: chargeOther.id }],
+          },
+          testAcademyId,
+        ),
       ).rejects.toThrow("Charge does not belong to student");
     });
 
     it("T14b — addInvoiceLine: no permitir charge de otro student", async () => {
-      // Crear invoice para student1
-      const invoice = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [{ type: "CHARGE", chargeId: c1Id }],
-      });
+      const invoice = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [{ type: "CHARGE", chargeId: c1Id }],
+        },
+        testAcademyId,
+      );
 
-      // Crear charge para student2
       const chargeOther = await prisma.charge.create({
         data: {
           feeId: testFeeId,
@@ -594,12 +642,14 @@ describe("InvoicesService (Integration)", () => {
         },
       });
 
-      // Intentar agregar charge de student2 a invoice de student1
       await expect(
-        service.addInvoiceLine({
-          invoiceId: invoice.id,
-          line: { type: "CHARGE", chargeId: chargeOther.id },
-        }),
+        service.addInvoiceLine(
+          {
+            invoiceId: invoice.id,
+            line: { type: "CHARGE", chargeId: chargeOther.id },
+          },
+          testAcademyId,
+        ),
       ).rejects.toThrow("Charge does not belong to student");
     });
   });
@@ -610,64 +660,95 @@ describe("InvoicesService (Integration)", () => {
   describe("F) Validaciones de descuentos", () => {
     it("T15 — Percent > 100 => error", async () => {
       await expect(
-        service.createInvoice({
-          studentId: testStudentId,
-          recipientName: "Test Student",
-          issueDate: new Date("2026-01-01"),
-          dueDate: new Date("2026-01-31"),
-          lines: [
-            {
-              type: "CHARGE",
-              chargeId: c1Id,
-              discountType: "PERCENT",
-              discountValue: 150,
-            },
-          ],
-        }),
+        service.createInvoice(
+          {
+            studentId: testStudentId,
+            recipientName: "Test Student",
+            issueDate: new Date("2026-01-01"),
+            dueDate: new Date("2026-01-31"),
+            lines: [
+              {
+                type: "CHARGE",
+                chargeId: c1Id,
+                discountType: "PERCENT",
+                discountValue: 150,
+              },
+            ],
+          },
+          testAcademyId,
+        ),
       ).rejects.toThrow("Percent discount must be between 0 and 100");
     });
 
     it("T16 — Percent negativo => error", async () => {
       await expect(
-        service.createInvoice({
-          studentId: testStudentId,
-          recipientName: "Test Student",
-          issueDate: new Date("2026-01-01"),
-          dueDate: new Date("2026-01-31"),
-          lines: [
-            {
-              type: "CHARGE",
-              chargeId: c1Id,
-              discountType: "PERCENT",
-              discountValue: -10,
-            },
-          ],
-        }),
+        service.createInvoice(
+          {
+            studentId: testStudentId,
+            recipientName: "Test Student",
+            issueDate: new Date("2026-01-01"),
+            dueDate: new Date("2026-01-31"),
+            lines: [
+              {
+                type: "CHARGE",
+                chargeId: c1Id,
+                discountType: "PERCENT",
+                discountValue: -10,
+              },
+            ],
+          },
+          testAcademyId,
+        ),
       ).rejects.toThrow("Discount value cannot be negative");
     });
 
     it("T17 — Fixed > originalAmount => error", async () => {
       await expect(
-        service.createInvoice({
-          studentId: testStudentId,
-          recipientName: "Test Student",
-          issueDate: new Date("2026-01-01"),
-          dueDate: new Date("2026-01-31"),
-          lines: [
-            {
-              type: "CHARGE",
-              chargeId: c1Id,
-              discountType: "FIXED_AMOUNT",
-              discountValueFixed: 15_000,
-            },
-          ],
-        }),
+        service.createInvoice(
+          {
+            studentId: testStudentId,
+            recipientName: "Test Student",
+            issueDate: new Date("2026-01-01"),
+            dueDate: new Date("2026-01-31"),
+            lines: [
+              {
+                type: "CHARGE",
+                chargeId: c1Id,
+                discountType: "FIXED_AMOUNT",
+                discountValueFixed: 15_000,
+              },
+            ],
+          },
+          testAcademyId,
+        ),
       ).rejects.toThrow("Discount exceeds amount");
     });
 
     it("T18 — Fixed negativo => error", async () => {
       await expect(
-        service.createInvoice({
+        service.createInvoice(
+          {
+            studentId: testStudentId,
+            recipientName: "Test Student",
+            issueDate: new Date("2026-01-01"),
+            dueDate: new Date("2026-01-31"),
+            lines: [
+              {
+                type: "CHARGE",
+                chargeId: c1Id,
+                discountType: "FIXED_AMOUNT",
+                discountValueFixed: -500,
+              },
+            ],
+          },
+          testAcademyId,
+        ),
+      ).rejects.toThrow("Discount value cannot be negative");
+    });
+
+    it("T19 — Nunca finalAmount < 0 (borde: descuento igual a monto)", async () => {
+      const result = await service.createInvoice(
+        {
           studentId: testStudentId,
           recipientName: "Test Student",
           issueDate: new Date("2026-01-01"),
@@ -677,29 +758,12 @@ describe("InvoicesService (Integration)", () => {
               type: "CHARGE",
               chargeId: c1Id,
               discountType: "FIXED_AMOUNT",
-              discountValueFixed: -500,
+              discountValueFixed: 10_000,
             },
           ],
-        }),
-      ).rejects.toThrow("Discount value cannot be negative");
-    });
-
-    it("T19 — Nunca finalAmount < 0 (borde: descuento igual a monto)", async () => {
-      // Caso borde: descuento igual al monto, finalAmount debería ser 0
-      const result = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [
-          {
-            type: "CHARGE",
-            chargeId: c1Id,
-            discountType: "FIXED_AMOUNT",
-            discountValueFixed: 10_000,
-          },
-        ],
-      });
+        },
+        testAcademyId,
+      );
 
       expect(result.lines[0].finalAmount).toBe(0);
       expect(result.total).toBe(0);
@@ -711,91 +775,96 @@ describe("InvoicesService (Integration)", () => {
   // ============================================================
   describe("G) Update InvoiceLine + Totals recalculation", () => {
     it("T20 — Update descuento en una línea recalcula totales", async () => {
-      const invoice = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [
-          { type: "CHARGE", chargeId: c1Id },
-          { type: "CHARGE", chargeId: c2Id },
-        ],
-      });
+      const invoice = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [
+            { type: "CHARGE", chargeId: c1Id },
+            { type: "CHARGE", chargeId: c2Id },
+          ],
+        },
+        testAcademyId,
+      );
 
       expect(invoice.subtotal).toBe(20_000);
       expect(invoice.total).toBe(20_000);
 
-      // Aplicar descuento del 10% a línea de C1
       const lineC1 = invoice.lines.find((l) => l.chargeId === c1Id);
-      const result = await service.updateInvoiceLine({
-        lineId: lineC1.id,
-        discountType: "PERCENT",
-        discountValue: 10,
-        discountReason: "Descuento especial",
-      });
+      const result = await service.updateInvoiceLine(
+        {
+          lineId: lineC1.id,
+          discountType: "PERCENT",
+          discountValue: 10,
+          discountReason: "Descuento especial",
+        },
+        testAcademyId,
+      );
 
-      // Verificar que la línea tiene el descuento
       const updatedLineC1 = result.lines.find((l) => l.chargeId === c1Id);
       expect(updatedLineC1?.finalAmount).toBe(9000);
 
-      // Verificar totales del invoice
       expect(result.subtotal).toBe(20_000);
       expect(result.totalDiscount).toBe(1000);
       expect(result.total).toBe(19_000);
     });
 
     it("T21 — Update descuento y luego remove la línea", async () => {
-      const invoice = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [
-          { type: "CHARGE", chargeId: c1Id },
-          { type: "CHARGE", chargeId: c2Id },
-        ],
-      });
+      const invoice = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [
+            { type: "CHARGE", chargeId: c1Id },
+            { type: "CHARGE", chargeId: c2Id },
+          ],
+        },
+        testAcademyId,
+      );
 
-      // Aplicar descuento a C1
       const lineC1 = invoice.lines.find((l) => l.chargeId === c1Id);
-      await service.updateInvoiceLine({
-        lineId: lineC1.id,
-        discountType: "PERCENT",
-        discountValue: 20,
-        discountReason: "Promo",
-      });
+      await service.updateInvoiceLine(
+        {
+          lineId: lineC1.id,
+          discountType: "PERCENT",
+          discountValue: 20,
+          discountReason: "Promo",
+        },
+        testAcademyId,
+      );
 
-      // Remover la línea con descuento
-      const result = await service.removeInvoiceLine(lineC1.id);
+      const result = await service.removeInvoiceLine(lineC1.id, testAcademyId);
 
-      // Verificar que solo queda C2
       expect(result.lines).toHaveLength(1);
       expect(result.lines[0].chargeId).toBe(c2Id);
       expect(result.subtotal).toBe(10_000);
       expect(result.totalDiscount).toBe(0);
       expect(result.total).toBe(10_000);
 
-      // C1 vuelve a PENDING
       const charge = await prisma.charge.findUnique({ where: { id: c1Id } });
       expect(charge?.status).toBe(ChargeStatus.PENDING);
 
-      // La línea histórica conserva el descuento
       const historicLine = await prisma.invoiceLine.findFirst({
         where: { invoiceId: invoice.id, chargeId: c1Id, isActive: false },
       });
       expect(historicLine?.discountType).toBe("PERCENT");
       expect(historicLine?.discountValue).toBe(20);
 
-      // Re-facturar C1 sin descuento
-      const newInvoice = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-15"),
-        dueDate: new Date("2026-01-31"),
-        lines: [{ type: "CHARGE", chargeId: c1Id }],
-      });
+      const newInvoice = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-15"),
+          dueDate: new Date("2026-01-31"),
+          lines: [{ type: "CHARGE", chargeId: c1Id }],
+        },
+        testAcademyId,
+      );
 
-      // No arrastra el descuento
       expect(newInvoice.lines[0].discountType).toBeUndefined();
       expect(newInvoice.lines[0].discountValue).toBeUndefined();
       expect(newInvoice.lines[0].finalAmount).toBe(10_000);
@@ -807,33 +876,36 @@ describe("InvoicesService (Integration)", () => {
   // ============================================================
   describe("H) Concurrencia", () => {
     it("T22 — Dos createInvoice simultáneos con mismo charge", async () => {
-      // Ejecutar en paralelo
-      const promise1 = service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [{ type: "CHARGE", chargeId: c1Id }],
-      });
+      const promise1 = service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [{ type: "CHARGE", chargeId: c1Id }],
+        },
+        testAcademyId,
+      );
 
-      const promise2 = service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [{ type: "CHARGE", chargeId: c1Id }],
-      });
+      const promise2 = service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [{ type: "CHARGE", chargeId: c1Id }],
+        },
+        testAcademyId,
+      );
 
       const results = await Promise.allSettled([promise1, promise2]);
 
-      // Uno debería tener éxito, otro debería fallar
       const successes = results.filter((r) => r.status === "fulfilled");
       const failures = results.filter((r) => r.status === "rejected");
 
       expect(successes.length).toBe(1);
       expect(failures.length).toBe(1);
 
-      // Verificar que solo existe una invoice line activa para C1
       const activeLines = await prisma.invoiceLine.findMany({
         where: { chargeId: c1Id, isActive: true },
       });
@@ -846,22 +918,24 @@ describe("InvoicesService (Integration)", () => {
   // ============================================================
   describe("T25) Descuento -> Remove -> Re-invoice", () => {
     it("descuento aplicado, remove line, re-facturar limpio", async () => {
-      // 1) Crear invoice con descuento
-      const invoice1 = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [
-          {
-            type: "CHARGE",
-            chargeId: c1Id,
-            discountType: "PERCENT",
-            discountValue: 10,
-            discountReason: "Promo",
-          },
-        ],
-      });
+      const invoice1 = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [
+            {
+              type: "CHARGE",
+              chargeId: c1Id,
+              discountType: "PERCENT",
+              discountValue: 10,
+              discountReason: "Promo",
+            },
+          ],
+        },
+        testAcademyId,
+      );
 
       expect(invoice1.subtotal).toBe(10_000);
       expect(invoice1.totalDiscount).toBe(1000);
@@ -870,15 +944,12 @@ describe("InvoicesService (Integration)", () => {
       expect(invoice1.lines[0].discountValue).toBe(10);
       expect(invoice1.lines[0].finalAmount).toBe(9000);
 
-      // Verificar charge
       let charge = await prisma.charge.findUnique({ where: { id: c1Id } });
       expect(charge?.status).toBe(ChargeStatus.INVOICED);
-      expect(charge?.amount).toBe(10_000); // El charge NO cambia
+      expect(charge?.amount).toBe(10_000);
 
-      // 2) Remover la línea con descuento
-      await service.removeInvoiceLine(invoice1.lines[0].id);
+      await service.removeInvoiceLine(invoice1.lines[0].id, testAcademyId);
 
-      // Verificar línea histórica
       const historicLine = await prisma.invoiceLine.findFirst({
         where: { invoiceId: invoice1.id, chargeId: c1Id, isActive: false },
       });
@@ -886,21 +957,21 @@ describe("InvoicesService (Integration)", () => {
       expect(historicLine?.discountType).toBe("PERCENT");
       expect(historicLine?.discountValue).toBe(10);
 
-      // Verificar charge volvió a PENDING
       charge = await prisma.charge.findUnique({ where: { id: c1Id } });
       expect(charge?.status).toBe(ChargeStatus.PENDING);
       expect(charge?.amount).toBe(10_000);
 
-      // 3) Re-facturar el mismo charge SIN descuento
-      const invoice2 = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-15"),
-        dueDate: new Date("2026-01-31"),
-        lines: [{ type: "CHARGE", chargeId: c1Id }],
-      });
+      const invoice2 = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-15"),
+          dueDate: new Date("2026-01-31"),
+          lines: [{ type: "CHARGE", chargeId: c1Id }],
+        },
+        testAcademyId,
+      );
 
-      // Verificar que NO arrastra el descuento
       expect(invoice2.lines[0].chargeId).toBe(c1Id);
       expect(invoice2.lines[0].discountType).toBeUndefined();
       expect(invoice2.lines[0].discountValue).toBeUndefined();
@@ -911,11 +982,9 @@ describe("InvoicesService (Integration)", () => {
       expect(invoice2.totalDiscount).toBe(0);
       expect(invoice2.total).toBe(10_000);
 
-      // Verificar que charge está INVOICED
       charge = await prisma.charge.findUnique({ where: { id: c1Id } });
       expect(charge?.status).toBe(ChargeStatus.INVOICED);
 
-      // Verificar que existen 2 invoiceLines para C1 (una activa, una histórica)
       const allLines = await prisma.invoiceLine.findMany({
         where: { chargeId: c1Id },
       });
@@ -930,30 +999,38 @@ describe("InvoicesService (Integration)", () => {
   // ============================================================
   describe("Queries básicas", () => {
     it("findById — debe encontrar una factura por ID", async () => {
-      const invoice = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [{ type: "CHARGE", chargeId: c1Id }],
-      });
+      const invoice = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [{ type: "CHARGE", chargeId: c1Id }],
+        },
+        testAcademyId,
+      );
 
-      const result = await service.findById(invoice.id);
+      const result = await service.findById(invoice.id, testAcademyId);
 
       expect(result.id).toBe(invoice.id);
       expect(result.recipientName).toBe("Test Student");
     });
 
     it("findAll — debe listar facturas con filtro de estudiante", async () => {
-      await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [{ type: "CHARGE", chargeId: c1Id }],
-      });
+      await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [{ type: "CHARGE", chargeId: c1Id }],
+        },
+        testAcademyId,
+      );
 
-      const result = await service.findAll({ studentId: testStudentId });
+      const result = await service.findAll(testAcademyId, {
+        studentId: testStudentId,
+      });
 
       expect(result.data.length).toBeGreaterThan(0);
       expect(result.data.every((inv) => inv.studentId === testStudentId)).toBe(
@@ -963,24 +1040,27 @@ describe("InvoicesService (Integration)", () => {
     });
 
     it("findAll — debe listar facturas con filtro de status", async () => {
-      const invoice = await service.createInvoice({
-        studentId: testStudentId,
-        recipientName: "Test Student",
-        issueDate: new Date("2026-01-01"),
-        dueDate: new Date("2026-01-31"),
-        lines: [{ type: "CHARGE", chargeId: c1Id }],
-      });
+      const invoice = await service.createInvoice(
+        {
+          studentId: testStudentId,
+          recipientName: "Test Student",
+          issueDate: new Date("2026-01-01"),
+          dueDate: new Date("2026-01-31"),
+          lines: [{ type: "CHARGE", chargeId: c1Id }],
+        },
+        testAcademyId,
+      );
 
-      await service.voidInvoice(invoice.id);
+      await service.voidInvoice(invoice.id, testAcademyId);
 
-      const voidedInvoices = await service.findAll({
+      const voidedInvoices = await service.findAll(testAcademyId, {
         status: InvoiceStatus.VOID,
       });
       expect(voidedInvoices.data.some((inv) => inv.id === invoice.id)).toBe(
         true,
       );
 
-      const issuedInvoices = await service.findAll({
+      const issuedInvoices = await service.findAll(testAcademyId, {
         status: InvoiceStatus.ISSUED,
       });
       expect(issuedInvoices.data.every((inv) => inv.id !== invoice.id)).toBe(

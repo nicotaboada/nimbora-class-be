@@ -44,6 +44,24 @@ export class TestPrismaService extends PrismaClient {
   }
 
   private async createEnums() {
+    // AcademyStatus enum
+    await this.$executeRawUnsafe(`
+      DO $$ BEGIN
+        CREATE TYPE "AcademyStatus" AS ENUM ('ACTIVE', 'INACTIVE', 'SUSPENDED');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // UserRole enum
+    await this.$executeRawUnsafe(`
+      DO $$ BEGIN
+        CREATE TYPE "UserRole" AS ENUM ('ADMIN', 'OWNER', 'STAFF', 'TEACHER', 'STUDENT');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
     // StudentStatus enum
     await this.$executeRawUnsafe(`
       DO $$ BEGIN
@@ -151,9 +169,77 @@ export class TestPrismaService extends PrismaClient {
         WHEN duplicate_object THEN null;
       END $$;
     `);
+
+    // BulkOperationType enum
+    await this.$executeRawUnsafe(`
+      DO $$ BEGIN
+        CREATE TYPE "BulkOperationType" AS ENUM ('BULK_INVOICE', 'BULK_AFIP');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // BulkOperationStatus enum
+    await this.$executeRawUnsafe(`
+      DO $$ BEGIN
+        CREATE TYPE "BulkOperationStatus" AS ENUM ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
   }
 
   private async createTables() {
+    // Academy table
+    await this.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "Academy" (
+        "id" TEXT NOT NULL,
+        "name" TEXT NOT NULL,
+        "slug" TEXT NOT NULL,
+        "status" "AcademyStatus" NOT NULL DEFAULT 'ACTIVE',
+        "country" TEXT NOT NULL,
+        "currency" TEXT NOT NULL,
+        "timezone" TEXT NOT NULL,
+        "email" TEXT,
+        "phone" TEXT,
+        "address" TEXT,
+        "ownerUserId" TEXT NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL,
+        CONSTRAINT "Academy_pkey" PRIMARY KEY ("id")
+      );
+    `);
+
+    // Academy slug unique index
+    await this.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "Academy_slug_key" ON "Academy"("slug");
+    `);
+
+    // User table
+    await this.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "User" (
+        "id" TEXT NOT NULL,
+        "supabaseUserId" TEXT NOT NULL,
+        "academyId" TEXT NOT NULL,
+        "role" "UserRole" NOT NULL,
+        "firstName" TEXT NOT NULL,
+        "lastName" TEXT NOT NULL,
+        "email" TEXT NOT NULL,
+        "phone" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL,
+        CONSTRAINT "User_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "User_academyId_fkey" FOREIGN KEY ("academyId") REFERENCES "Academy"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+      );
+    `);
+
+    // User indexes
+    await this.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "User_supabaseUserId_key" ON "User"("supabaseUserId");
+      CREATE INDEX IF NOT EXISTS "User_supabaseUserId_idx" ON "User"("supabaseUserId");
+      CREATE INDEX IF NOT EXISTS "User_academyId_idx" ON "User"("academyId");
+    `);
+
     // Student table
     await this.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "Student" (
@@ -163,15 +249,21 @@ export class TestPrismaService extends PrismaClient {
         "email" TEXT NOT NULL,
         "phoneNumber" TEXT,
         "status" "StudentStatus" NOT NULL DEFAULT 'ENABLED',
+        "academyId" TEXT NOT NULL,
+        "userId" TEXT,
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" TIMESTAMP(3) NOT NULL,
-        CONSTRAINT "Student_pkey" PRIMARY KEY ("id")
+        CONSTRAINT "Student_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "Student_academyId_fkey" FOREIGN KEY ("academyId") REFERENCES "Academy"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+        CONSTRAINT "Student_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE
       );
     `);
 
-    // Student email unique index
+    // Student indexes
     await this.$executeRawUnsafe(`
       CREATE UNIQUE INDEX IF NOT EXISTS "Student_email_key" ON "Student"("email");
+      CREATE UNIQUE INDEX IF NOT EXISTS "Student_userId_key" ON "Student"("userId");
+      CREATE INDEX IF NOT EXISTS "Student_academyId_idx" ON "Student"("academyId");
     `);
 
     // Fee table
@@ -184,10 +276,17 @@ export class TestPrismaService extends PrismaClient {
         "cost" INTEGER NOT NULL,
         "occurrences" INTEGER,
         "period" "FeePeriod",
+        "academyId" TEXT NOT NULL,
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" TIMESTAMP(3) NOT NULL,
-        CONSTRAINT "Fee_pkey" PRIMARY KEY ("id")
+        CONSTRAINT "Fee_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "Fee_academyId_fkey" FOREIGN KEY ("academyId") REFERENCES "Academy"("id") ON DELETE RESTRICT ON UPDATE CASCADE
       );
+    `);
+
+    // Fee indexes
+    await this.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "Fee_academyId_idx" ON "Fee"("academyId");
     `);
 
     // Charge table
@@ -235,6 +334,7 @@ export class TestPrismaService extends PrismaClient {
         "recipientEmail" TEXT,
         "recipientPhone" TEXT,
         "recipientAddress" TEXT,
+        "academyId" TEXT NOT NULL,
         "issueDate" TIMESTAMP(3) NOT NULL,
         "dueDate" TIMESTAMP(3) NOT NULL,
         "publicNotes" TEXT,
@@ -248,15 +348,15 @@ export class TestPrismaService extends PrismaClient {
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" TIMESTAMP(3) NOT NULL,
         CONSTRAINT "Invoice_pkey" PRIMARY KEY ("id"),
-        CONSTRAINT "Invoice_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student"("id") ON DELETE SET NULL ON UPDATE CASCADE
+        CONSTRAINT "Invoice_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+        CONSTRAINT "Invoice_academyId_fkey" FOREIGN KEY ("academyId") REFERENCES "Academy"("id") ON DELETE RESTRICT ON UPDATE CASCADE
       );
     `);
 
     // Invoice indexes
     await this.$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS "Invoice_studentId_idx" ON "Invoice"("studentId");
-    `);
-    await this.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "Invoice_academyId_idx" ON "Invoice"("academyId");
       CREATE INDEX IF NOT EXISTS "Invoice_status_idx" ON "Invoice"("status");
     `);
 
@@ -360,6 +460,35 @@ export class TestPrismaService extends PrismaClient {
     await this.$executeRawUnsafe(`
       CREATE UNIQUE INDEX IF NOT EXISTS "StudentCredit_sourcePaymentId_key" ON "StudentCredit"("sourcePaymentId");
     `);
+
+    // BulkOperation table
+    await this.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "BulkOperation" (
+        "id" TEXT NOT NULL,
+        "type" "BulkOperationType" NOT NULL,
+        "status" "BulkOperationStatus" NOT NULL DEFAULT 'PENDING',
+        "academyId" TEXT NOT NULL,
+        "totalItems" INTEGER NOT NULL,
+        "completedItems" INTEGER NOT NULL DEFAULT 0,
+        "failedItems" INTEGER NOT NULL DEFAULT 0,
+        "skippedItems" INTEGER NOT NULL DEFAULT 0,
+        "results" JSONB NOT NULL DEFAULT '[]',
+        "params" JSONB NOT NULL,
+        "triggerRunId" TEXT,
+        "startedAt" TIMESTAMP(3),
+        "completedAt" TIMESTAMP(3),
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL,
+        CONSTRAINT "BulkOperation_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "BulkOperation_academyId_fkey" FOREIGN KEY ("academyId") REFERENCES "Academy"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+      );
+    `);
+
+    // BulkOperation indexes
+    await this.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "BulkOperation_academyId_idx" ON "BulkOperation"("academyId");
+      CREATE INDEX IF NOT EXISTS "BulkOperation_status_idx" ON "BulkOperation"("status");
+    `);
   }
 
   /**
@@ -368,7 +497,7 @@ export class TestPrismaService extends PrismaClient {
   async cleanDatabase() {
     // Use a single TRUNCATE command with CASCADE to avoid deadlocks
     await this.$executeRawUnsafe(`
-      TRUNCATE TABLE "StudentCredit", "Payment", "InvoiceLine", "Invoice", "Charge", "Fee", "Student" CASCADE;
+      TRUNCATE TABLE "BulkOperation", "StudentCredit", "Payment", "InvoiceLine", "Invoice", "Charge", "Fee", "Student", "User", "Academy" CASCADE;
     `);
   }
 }

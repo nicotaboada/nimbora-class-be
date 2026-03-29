@@ -9,6 +9,7 @@ import { AfipSalesPointService } from "./afip-sales-point.service";
 import { AfipSalesPointResolver } from "./afip-sales-point.resolver";
 import { AfipInvoiceService } from "./afip-invoice.service";
 import { AfipInvoiceResolver } from "./afip-invoice.resolver";
+import { InvoiceAfipFieldResolver } from "./invoice-afip-field.resolver";
 
 @Module({
   imports: [PrismaModule, AuthModule, FeatureFlagsModule],
@@ -20,6 +21,7 @@ import { AfipInvoiceResolver } from "./afip-invoice.resolver";
     AfipSalesPointResolver,
     AfipInvoiceService,
     AfipInvoiceResolver,
+    InvoiceAfipFieldResolver,
   ],
   exports: [
     AfipService,

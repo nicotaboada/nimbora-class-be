@@ -713,6 +713,9 @@ enum FeeType {
 }
 
 type Invoice {
+  """Datos de fiscalización AFIP (null si la factura no fue fiscalizada)"""
+  afipInvoice: AfipInvoice
+
   """Saldo pendiente en centavos (total - paidAmount)"""
   balance: Int!
   createdAt: DateTime!
@@ -723,9 +726,6 @@ type Invoice {
 
   """Número de factura secuencial"""
   invoiceNumber: Int!
-
-  """Indica si la factura fue fiscalizada en AFIP"""
-  isFiscalized: Boolean!
 
   """Fecha de emisión"""
   issueDate: DateTime!

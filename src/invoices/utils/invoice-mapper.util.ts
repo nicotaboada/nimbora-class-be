@@ -11,19 +11,13 @@ type PrismaInvoiceWithLinesAndPayments = Prisma.InvoiceGetPayload<{
   include: { lines: true; payments: true };
 }>;
 
-type PrismaInvoiceWithAfip = PrismaInvoiceWithLines &
-  Partial<Prisma.InvoiceGetPayload<{ include: { afip: true } }>>;
-
 /**
  * Maps a Prisma Invoice (with lines) to the Invoice entity.
  * @param invoice The invoice object from Prisma with lines included
  * @returns The mapped Invoice entity
  */
 export function mapInvoiceToEntity(
-  invoice:
-    | PrismaInvoiceWithLines
-    | PrismaInvoiceWithLinesAndPayments
-    | PrismaInvoiceWithAfip,
+  invoice: PrismaInvoiceWithLines | PrismaInvoiceWithLinesAndPayments,
 ): Invoice {
   const activeLines = [...invoice.lines]
     .filter((l) => l.isActive)
@@ -48,7 +42,6 @@ export function mapInvoiceToEntity(
     paidAmount: invoice.paidAmount,
     balance: invoice.balance,
     lines: activeLines.map((line) => mapInvoiceLineToEntity(line)),
-    isFiscalized: "afip" in invoice ? !!invoice.afip : false,
     createdAt: invoice.createdAt,
     updatedAt: invoice.updatedAt,
   };

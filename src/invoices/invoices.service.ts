@@ -545,7 +545,7 @@ export class InvoicesService {
   async findById(invoiceId: string, academyId: string): Promise<Invoice> {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
-      include: { lines: true, payments: true, afip: true },
+      include: { lines: true, payments: true },
     });
 
     // Ownership: validar que invoice pertenece a la academy
@@ -587,7 +587,7 @@ export class InvoicesService {
       this.prisma.invoice.count({ where }),
       this.prisma.invoice.findMany({
         where,
-        include: { lines: true, payments: true, afip: true },
+        include: { lines: true, payments: true },
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
@@ -627,7 +627,7 @@ export class InvoicesService {
           },
           orderBy: { dueDate: "asc" },
           take: 3,
-          include: { lines: true, payments: true, afip: true },
+          include: { lines: true, payments: true },
         }),
         this.prisma.invoice.findMany({
           where: {
@@ -637,7 +637,7 @@ export class InvoicesService {
           },
           orderBy: { dueDate: "desc" },
           take: 3,
-          include: { lines: true, payments: true, afip: true },
+          include: { lines: true, payments: true },
         }),
         this.prisma.invoice.aggregate({
           where: {

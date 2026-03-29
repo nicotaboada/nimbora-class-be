@@ -3,8 +3,12 @@ import { UseGuards } from "@nestjs/common";
 import { BulkOperationsService } from "./bulk-operations.service";
 import { BulkOperation } from "./entities/bulk-operation.entity";
 import { BulkCreateInvoicesInput } from "./dto/bulk-create-invoices.input";
+import { BulkCreateAfipInvoicesInput } from "./dto/bulk-create-afip-invoices.input";
 import { StudentsForBulkInvoiceInput } from "./dto/students-for-bulk-invoice.input";
+import { InvoicesForBulkAfipInput } from "./dto/invoices-for-bulk-afip.input";
 import { PaginatedStudentsForBulkInvoice } from "./dto/paginated-students-for-bulk-invoice.output";
+import { PaginatedInvoicesForBulkAfip } from "./dto/paginated-invoices-for-bulk-afip.output";
+import { AfipBulkSummary } from "./entities/afip-bulk-summary.entity";
 import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { User } from "../users/entities/user.entity";
@@ -51,6 +55,67 @@ export class BulkOperationsResolver {
   ): Promise<BulkOperation> {
     return this.bulkOperationsService.bulkCreateInvoices(input, user.academyId);
   }
+
+  // ─── AFIP Bulk ─────────────────────────────────────────────────────────────
+
+  /**
+   * Lista facturas PAID elegibles para emisión AFIP.
+   */
+  @Query(() => PaginatedInvoicesForBulkAfip, {
+    name: "invoicesForBulkAfip",
+    description: "Facturas pagadas elegibles para emisión AFIP (paginado)",
+  })
+  async findInvoicesForBulkAfip(
+    @CurrentUser() user: User,
+    @Args("input") input: InvoicesForBulkAfipInput,
+    @Args("page", { type: () => Int, nullable: true, defaultValue: 1 })
+    page: number,
+    @Args("limit", { type: () => Int, nullable: true, defaultValue: 10 })
+    limit: number,
+  ): Promise<PaginatedInvoicesForBulkAfip> {
+    return this.bulkOperationsService.findInvoicesForBulkAfip(
+      input,
+      user.academyId,
+      page,
+      limit,
+    );
+  }
+
+  /**
+   * Resumen de emisión AFIP con desglose por tipo de comprobante.
+   */
+  @Query(() => AfipBulkSummary, {
+    name: "afipBulkSummary",
+    description: "Resumen con desglose por tipo de comprobante AFIP",
+  })
+  async getAfipBulkSummary(
+    @Args("invoiceIds", { type: () => [String] }) invoiceIds: string[],
+    @CurrentUser() user: User,
+  ): Promise<AfipBulkSummary> {
+    return this.bulkOperationsService.getAfipBulkSummary(
+      invoiceIds,
+      user.academyId,
+    );
+  }
+
+  /**
+   * Emite facturas en AFIP en bulk (procesamiento en background).
+   */
+  @Mutation(() => BulkOperation, {
+    description:
+      "Emite facturas en AFIP en bulk. Retorna el operationId para polling.",
+  })
+  async bulkCreateAfipInvoices(
+    @Args("input") input: BulkCreateAfipInvoicesInput,
+    @CurrentUser() user: User,
+  ): Promise<BulkOperation> {
+    return this.bulkOperationsService.bulkCreateAfipInvoices(
+      input,
+      user.academyId,
+    );
+  }
+
+  // ─── Common ───────────────────────────────────────────────────────────────
 
   /**
    * Consulta el estado de una operación bulk (para polling).

@@ -5,6 +5,8 @@ import {
   TestPrismaService,
 } from "../../test/test-database";
 import { PrismaService } from "../prisma/prisma.service";
+import { AfipSettingsService } from "../afip/afip-settings.service";
+import { FeatureFlagsService } from "../feature-flags/feature-flags.service";
 import { ChargeStatus } from "@prisma/client";
 import { BulkOperationStatus } from "./enums/bulk-operation-status.enum";
 import { BulkOperationType } from "./enums/bulk-operation-type.enum";
@@ -31,7 +33,11 @@ describe("BulkOperationsService (Integration)", () => {
 
   beforeAll(async () => {
     prisma = await getTestPrismaService();
-    service = new BulkOperationsService(prisma as unknown as PrismaService);
+    service = new BulkOperationsService(
+      prisma as unknown as PrismaService,
+      {} as unknown as AfipSettingsService,
+      {} as unknown as FeatureFlagsService,
+    );
   }, 30_000);
 
   afterAll(async () => {

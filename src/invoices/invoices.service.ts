@@ -25,9 +25,9 @@ import {
   assertFound,
   assertOwnership,
 } from "../common/utils/tenant-validation";
-import {
-  mapInvoiceToEntity,
-} from "./utils/invoice-mapper.util";
+import { sendInvoiceNotification } from "../email/send-invoice-email";
+import { generateInvoicePdf } from "../email/generate-invoice-pdf";
+import { mapInvoiceToEntity } from "./utils/invoice-mapper.util";
 
 @Injectable()
 export class InvoicesService {
@@ -81,7 +81,7 @@ export class InvoicesService {
     // Preparar mapa de charges y validar FUERA de la transacción
     const chargesMap = new Map<
       string,
-      { amount: number; feeDescription: string }
+      { amount: number; feeDescription: string; periodMonth: string | null }
     >();
     if (chargeIds.length > 0) {
       const charges = await this.prisma.charge.findMany({
@@ -108,7 +108,10 @@ export class InvoicesService {
       for (const c of charges) {
         chargesMap.set(c.id, {
           amount: c.amount,
-          feeDescription: c.fee.description,
+          feeDescription: c.periodMonth
+            ? `${c.fee.description} — Cuota ${c.periodMonth}`
+            : c.fee.description,
+          periodMonth: c.periodMonth,
         });
       }
     }
@@ -177,6 +180,42 @@ export class InvoicesService {
       }
       return invoice;
     });
+
+    if (input.notify && result.recipientEmail) {
+      try {
+        const academy = await this.prisma.academy.findUnique({
+          where: { id: academyId },
+          select: { name: true },
+        });
+        const pdfBuffer = generateInvoicePdf({
+          invoiceNumber: result.invoiceNumber,
+          recipientName: result.recipientName,
+          recipientEmail: result.recipientEmail,
+          recipientPhone: result.recipientPhone,
+          recipientAddress: result.recipientAddress,
+          issueDate: result.issueDate,
+          dueDate: result.dueDate,
+          subtotal: result.subtotal,
+          totalDiscount: result.totalDiscount,
+          total: result.total,
+          publicNotes: result.publicNotes,
+          lines: result.lines,
+        });
+        await sendInvoiceNotification({
+          recipientEmail: result.recipientEmail,
+          recipientName: result.recipientName,
+          invoiceNumber: result.invoiceNumber,
+          total: result.total,
+          issueDate: result.issueDate,
+          dueDate: result.dueDate,
+          academyName: academy?.name ?? "Academia",
+          pdfBuffer,
+        });
+      } catch (error) {
+        console.error("Failed to send invoice notification:", error);
+      }
+    }
+
     return mapInvoiceToEntity(result);
   }
 
@@ -232,7 +271,9 @@ export class InvoicesService {
         }
         lineData = this.buildLineData(lineInput, {
           amount: charge.amount,
-          feeDescription: charge.fee.description,
+          feeDescription: charge.periodMonth
+            ? `${charge.fee.description} — Cuota ${charge.periodMonth}`
+            : charge.fee.description,
         });
         await tx.charge.update({
           where: { id: lineInput.chargeId },

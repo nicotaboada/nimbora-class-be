@@ -1,6 +1,8 @@
 import { ObjectType, Field } from "@nestjs/graphql";
 
-@ObjectType()
+@ObjectType({
+  description: "Resultado por item de una operación bulk de facturas internas",
+})
 export class BulkOperationResult {
   @Field({ description: "ID del estudiante procesado" })
   studentId: string;

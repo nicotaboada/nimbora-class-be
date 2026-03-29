@@ -118,6 +118,33 @@ input AddPaymentInput {
   reference: String
 }
 
+"""Resumen de emisión AFIP para las facturas seleccionadas"""
+type AfipBulkSummary {
+  """Desglose por tipo de comprobante"""
+  breakdown: [AfipCbteBreakdown!]!
+
+  """Monto total en centavos"""
+  totalAmount: Int!
+
+  """Cantidad total de facturas"""
+  totalCount: Int!
+}
+
+"""Desglose por tipo de comprobante AFIP"""
+type AfipCbteBreakdown {
+  """Monto total en centavos"""
+  amount: Int!
+
+  """Código de tipo de comprobante (1=A, 6=B, 11=C)"""
+  cbteTipo: Int!
+
+  """Cantidad de facturas de este tipo"""
+  count: Int!
+
+  """Label del tipo de comprobante (Factura A, B, C)"""
+  label: String!
+}
+
 enum AfipDelegationStatus {
   ERROR
   OK
@@ -127,6 +154,44 @@ enum AfipDelegationStatus {
 enum AfipEnvironment {
   HOMO
   PROD
+}
+
+"""Datos fiscales de una factura emitida en AFIP"""
+type AfipInvoice {
+  """CAE otorgado por AFIP"""
+  cae: String
+
+  """Fecha de vencimiento del CAE"""
+  caeVto: DateTime
+
+  """Fecha del comprobante"""
+  cbteFch: DateTime!
+
+  """Número de comprobante AFIP"""
+  cbteNro: Int
+
+  """Tipo de comprobante (1=A, 6=B, 11=C)"""
+  cbteTipo: Int!
+
+  """Número de documento"""
+  docNumber: String
+
+  """Tipo de documento: CUIT, DNI, CONSUMIDOR_FINAL"""
+  docType: String!
+  id: String!
+  invoiceId: String!
+
+  """Punto de venta"""
+  ptoVta: Int!
+
+  """Nombre del receptor (snapshot)"""
+  recipientName: String!
+
+  """Estado de fiscalización: EMITTING, EMITTED, ERROR"""
+  status: String!
+
+  """Condición impositiva del receptor"""
+  taxCondition: String!
 }
 
 enum AfipOnboardingStep {
@@ -251,6 +316,45 @@ enum BillingTaxCondition {
   RESPONSABLE_INSCRIPTO
 }
 
+"""Resultado por item de una operación bulk de emisión AFIP"""
+type BulkAfipResult {
+  """CAE otorgado por AFIP"""
+  cae: String
+
+  """Número de comprobante AFIP"""
+  cbteNro: Int
+
+  """Detalle del error si falló"""
+  error: String
+
+  """ID de la factura interna"""
+  invoiceId: String!
+
+  """Número de factura interna"""
+  invoiceNumber: Int!
+
+  """Estado: emitted, failed, skipped"""
+  status: String!
+
+  """Nombre del alumno/receptor"""
+  studentName: String!
+
+  """Monto total en centavos"""
+  total: Int
+}
+
+"""Input para crear facturas electrónicas AFIP en bulk"""
+input BulkCreateAfipInvoicesInput {
+  """Fecha de emisión del comprobante"""
+  cbteFch: DateTime!
+
+  """IDs de facturas internas a emitir"""
+  invoiceIds: [String!]!
+
+  """Punto de venta AFIP"""
+  ptoVta: Int!
+}
+
 input BulkCreateInvoicesInput {
   """Fecha de vencimiento para todas las facturas"""
   dueDate: DateTime!
@@ -271,6 +375,8 @@ input BulkInvoiceItemInput {
 }
 
 type BulkOperation {
+  """Resultados de emisión AFIP"""
+  afipResults: [BulkAfipResult!]
   completedAt: DateTime
 
   """Items completados exitosamente"""
@@ -281,8 +387,8 @@ type BulkOperation {
   failedItems: Int!
   id: String!
 
-  """Detalle por estudiante"""
-  results: [BulkOperationResult!]!
+  """Resultados de facturación interna"""
+  results: [BulkOperationResult!]
 
   """Items salteados (sin charges)"""
   skippedItems: Int!
@@ -294,6 +400,7 @@ type BulkOperation {
   type: BulkOperationType!
 }
 
+"""Resultado por item de una operación bulk de facturas internas"""
 type BulkOperationResult {
   """Detalle del error si falló"""
   error: String
@@ -451,6 +558,9 @@ input CreateInvoiceInput {
 
   """Líneas de la factura"""
   lines: [CreateInvoiceLineInput!]!
+
+  """Enviar notificación por email al destinatario"""
+  notify: Boolean! = false
 
   """Notas privadas (internas)"""
   privateNotes: String
@@ -614,6 +724,9 @@ type Invoice {
   """Número de factura secuencial"""
   invoiceNumber: Int!
 
+  """Indica si la factura fue fiscalizada en AFIP"""
+  isFiscalized: Boolean!
+
   """Fecha de emisión"""
   issueDate: DateTime!
 
@@ -651,6 +764,36 @@ type Invoice {
   """Total de descuentos en centavos"""
   totalDiscount: Int!
   updatedAt: DateTime!
+}
+
+"""Preview de una factura interna elegible para emisión en AFIP"""
+type InvoiceBulkAfipPreview {
+  """Nombre del perfil fiscal (si es distinto al alumno)"""
+  billingDisplayName: String
+
+  """Número de documento fiscal"""
+  billingDocNumber: String
+
+  """Tipo de documento fiscal (DNI, CUIT, CONSUMIDOR_FINAL)"""
+  billingDocType: String
+
+  """Condición impositiva"""
+  billingTaxCondition: String
+
+  """ID de la factura interna"""
+  invoiceId: String!
+
+  """Número de factura interna"""
+  invoiceNumber: Int!
+
+  """Estado de la factura (siempre PAID)"""
+  status: String!
+
+  """Nombre del receptor/alumno"""
+  studentName: String!
+
+  """Monto total en centavos"""
+  total: Int!
 }
 
 type InvoiceLine {
@@ -730,6 +873,18 @@ input InvoicesFilterInput {
   studentId: ID
 }
 
+"""Filtros para listar facturas elegibles para emisión AFIP"""
+input InvoicesForBulkAfipInput {
+  """Si es true, incluye facturas del período seleccionado y anteriores"""
+  includePastDue: Boolean = false
+
+  """Periodo de facturación (formato YYYY-MM)"""
+  period: String
+
+  """Buscar por nombre del alumno"""
+  search: String
+}
+
 type Mutation {
   """Agrega una línea a una factura existente"""
   addInvoiceLine(input: AddInvoiceLineInput!): Invoice!
@@ -740,10 +895,18 @@ type Mutation {
   """Asigna un fee a estudiantes"""
   assignFeeToStudents(input: AssignFeeInput!): AssignFeeOutput!
 
+  """Emite facturas en AFIP en bulk. Retorna el operationId para polling."""
+  bulkCreateAfipInvoices(input: BulkCreateAfipInvoicesInput!): BulkOperation!
+
   """
   Genera facturas en bulk. Retorna el operationId para polling de estado.
   """
   bulkCreateInvoices(input: BulkCreateInvoicesInput!): BulkOperation!
+
+  """
+  Envía facturas AFIP por email en bulk. Retorna cantidad de emails enviados.
+  """
+  bulkSendAfipInvoiceEmails(invoiceIds: [ID!]!): Int!
 
   """Step 2: Confirma que delegó en ARCA y avanza a DELEGATION_2"""
   confirmAfipDelegationReady: AcademyAfipSettings!
@@ -774,6 +937,9 @@ type Mutation {
   removeInvoiceLine(lineId: ID!): Invoice!
   removeStudent(id: String!): Student!
   removeUser(id: String!): User!
+
+  """Envía la factura AFIP por email con el PDF adjunto"""
+  sendAfipInvoiceEmail(invoiceId: ID!): Boolean!
 
   """Habilita o deshabilita un feature flag"""
   setFeatureFlag(input: SetFeatureFlagInput!): AcademyFeature!
@@ -843,6 +1009,14 @@ type PaginatedFees {
 type PaginatedInvoices {
   """Lista de items"""
   data: [Invoice!]!
+
+  """Metadata de paginación"""
+  meta: PaginationMeta!
+}
+
+type PaginatedInvoicesForBulkAfip {
+  """Lista de items"""
+  data: [InvoiceBulkAfipPreview!]!
 
   """Metadata de paginación"""
   meta: PaginationMeta!
@@ -962,6 +1136,15 @@ type Query {
   academy(id: String!): Academy
   academyBySlug(slug: String!): Academy
 
+  """Resumen con desglose por tipo de comprobante AFIP"""
+  afipBulkSummary(invoiceIds: [String!]!): AfipBulkSummary!
+
+  """Obtiene los datos de fiscalización AFIP de una factura"""
+  afipInvoice(invoiceId: ID!): AfipInvoice
+
+  """Genera el PDF de la factura AFIP y retorna el contenido en base64"""
+  afipInvoicePdf(invoiceId: ID!): String!
+
   """Lista todos los puntos de venta AFIP de la academy"""
   afipSalesPoints: [AfipSalesPoint!]!
 
@@ -999,6 +1182,9 @@ type Query {
 
   """Lista facturas paginada"""
   invoices(filter: InvoicesFilterInput): PaginatedInvoices!
+
+  """Facturas pagadas elegibles para emisión AFIP (paginado)"""
+  invoicesForBulkAfip(input: InvoicesForBulkAfipInput!, limit: Int = 10, page: Int = 1): PaginatedInvoicesForBulkAfip!
 
   """Verifica si un feature está habilitado"""
   isFeatureEnabled(key: String!): Boolean!

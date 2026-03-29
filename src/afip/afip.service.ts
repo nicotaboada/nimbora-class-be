@@ -120,8 +120,26 @@ export class AfipService {
    * Devuelve razón social, condición IVA, domicilio, etc.
    */
   async lookupTaxpayer(cuit: string): Promise<TaxpayerData> {
+    const cleanCuit = cuit.replaceAll("-", "");
+
+    const AFIP_SDK_TEST_CUIT = "20409378472";
+    if (cleanCuit === AFIP_SDK_TEST_CUIT) {
+      return {
+        cuit: AFIP_SDK_TEST_CUIT,
+        razonSocial: "[DEV] AFIP SDK Testing",
+        personeria: "Física",
+        condicionIva: "RESPONSABLE_INSCRIPTO",
+        domicilioFiscal: "Av. Testing 123, CABA",
+        actividadPrincipal: "Servicios de testing (mock)",
+        street: "Av. Testing 123",
+        city: "CABA",
+        province: "Buenos Aires",
+        zipCode: "1000",
+      };
+    }
+
     const afip = this.getSaasAfipInstance();
-    const cuitNumber = Number(cuit.replaceAll("-", ""));
+    const cuitNumber = Number(cleanCuit);
 
     try {
       const taxpayer = (await afip.RegisterInscriptionProof.getTaxpayerDetails(
@@ -138,7 +156,7 @@ export class AfipService {
       const domicilio = persona?.domicilioFiscal;
 
       return {
-        cuit: cuit.replaceAll("-", ""),
+        cuit: cleanCuit,
         razonSocial: extractRazonSocial(persona),
         personeria: mapPersoneria(persona),
         condicionIva: mapCondicionIva(taxpayer),

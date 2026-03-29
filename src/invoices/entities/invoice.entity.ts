@@ -77,6 +77,9 @@ export class Invoice {
   })
   payments?: Payment[];
 
+  @Field({ description: "Indica si la factura fue fiscalizada en AFIP" })
+  isFiscalized: boolean;
+
   @Field()
   createdAt: Date;
 

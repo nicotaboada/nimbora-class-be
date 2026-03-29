@@ -6,6 +6,7 @@ import {
   IsUUID,
   IsDate,
   IsEmail,
+  IsBoolean,
   ValidateNested,
   ArrayMinSize,
 } from "class-validator";
@@ -64,6 +65,14 @@ export class CreateInvoiceInput {
   @IsOptional()
   @IsString()
   privateNotes?: string;
+
+  @Field({
+    defaultValue: false,
+    description: "Enviar notificación por email al destinatario",
+  })
+  @IsBoolean()
+  @IsOptional()
+  notify?: boolean = false;
 
   @Field(() => [CreateInvoiceLineInput], {
     description: "Líneas de la factura",

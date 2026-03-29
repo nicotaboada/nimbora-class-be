@@ -6,6 +6,8 @@ import {
   InvoiceLineType,
 } from "@prisma/client";
 import { LineDataToCreate } from "../invoices/types/invoice.types";
+import { sendInvoiceNotification } from "../email/send-invoice-email";
+import { generateInvoicePdf } from "../email/generate-invoice-pdf";
 
 const prisma = new PrismaClient();
 
@@ -19,6 +21,7 @@ interface BulkCreateInvoicesPayload {
   items: BulkInvoiceItem[];
   dueDate: string;
   academyId: string;
+  notify: boolean;
 }
 interface ItemResult {
   studentId: string;
@@ -43,9 +46,18 @@ export const bulkCreateInvoicesTask = task({
   id: "bulk-create-invoices",
   retry: { maxAttempts: 1 },
   run: async (payload: BulkCreateInvoicesPayload) => {
-    const { operationId, items, dueDate, academyId } = payload;
+    const { operationId, items, dueDate, academyId, notify } = payload;
     const issueDateValue = new Date();
     const dueDateValue = new Date(dueDate);
+
+    let academyName = "Academia";
+    if (notify) {
+      const academy = await prisma.academy.findUnique({
+        where: { id: academyId },
+        select: { name: true },
+      });
+      academyName = academy?.name ?? "Academia";
+    }
 
     await updateOperation(operationId, {
       status: "PROCESSING",
@@ -64,6 +76,8 @@ export const bulkCreateInvoicesTask = task({
           academyId,
           issueDateValue,
           dueDateValue,
+          notify,
+          academyName,
         );
 
         results.push(result);
@@ -132,6 +146,8 @@ async function processStudentInvoice(
   academyId: string,
   issueDate: Date,
   dueDate: Date,
+  notify: boolean,
+  academyName: string,
 ): Promise<ItemResult> {
   const student = await prisma.student.findUnique({
     where: { id: item.studentId },
@@ -186,7 +202,9 @@ async function processStudentInvoice(
     (charge): LineDataToCreate => ({
       type: InvoiceLineType.CHARGE,
       chargeId: charge.id,
-      description: charge.fee.description,
+      description: charge.periodMonth
+        ? `${charge.fee.description} — Cuota ${charge.periodMonth}`
+        : charge.fee.description,
       originalAmount: charge.amount,
       discountType: null,
       discountValue: null,
@@ -226,6 +244,42 @@ async function processStudentInvoice(
 
     return created;
   });
+
+  if (notify && student.email) {
+    try {
+      const pdfBuffer = generateInvoicePdf({
+        invoiceNumber: invoice.invoiceNumber,
+        recipientName: studentName,
+        recipientEmail: student.email,
+        recipientPhone: student.phoneNumber,
+        issueDate,
+        dueDate,
+        subtotal,
+        totalDiscount: 0,
+        total,
+        lines: lines.map((l) => ({
+          description: l.description,
+          originalAmount: l.originalAmount,
+          finalAmount: l.finalAmount,
+          discountType: l.discountType,
+          discountValue: l.discountValue,
+          isActive: l.isActive,
+        })),
+      });
+      await sendInvoiceNotification({
+        recipientEmail: student.email,
+        recipientName: studentName,
+        invoiceNumber: invoice.invoiceNumber,
+        total,
+        issueDate,
+        dueDate,
+        academyName,
+        pdfBuffer,
+      });
+    } catch (error) {
+      logger.warn(`Failed to send email to ${student.email}`, { error });
+    }
+  }
 
   return {
     studentId: student.id,

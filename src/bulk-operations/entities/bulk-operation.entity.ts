@@ -2,6 +2,7 @@ import { ObjectType, Field, Int } from "@nestjs/graphql";
 import { BulkOperationType } from "../enums/bulk-operation-type.enum";
 import { BulkOperationStatus } from "../enums/bulk-operation-status.enum";
 import { BulkOperationResult } from "./bulk-operation-result.entity";
+import { BulkAfipResult } from "./bulk-afip-result.entity";
 
 @ObjectType()
 export class BulkOperation {
@@ -27,9 +28,16 @@ export class BulkOperation {
   skippedItems: number;
 
   @Field(() => [BulkOperationResult], {
-    description: "Detalle por estudiante",
+    nullable: true,
+    description: "Resultados de facturación interna",
   })
-  results: BulkOperationResult[];
+  results?: BulkOperationResult[];
+
+  @Field(() => [BulkAfipResult], {
+    nullable: true,
+    description: "Resultados de emisión AFIP",
+  })
+  afipResults?: BulkAfipResult[];
 
   @Field({ nullable: true })
   startedAt?: Date;

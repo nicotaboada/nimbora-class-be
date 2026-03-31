@@ -50,6 +50,7 @@ model Academy {
   
   users           User[]
   students        Student[]
+  teachers        Teacher[]
   fees            Fee[]
   invoices        Invoice[]
   features        AcademyFeature[]
@@ -113,6 +114,31 @@ model Student {
   credits         StudentCredit[]
   billingProfiles BillingProfile[]
   
+  @@index([academyId])
+}
+
+// ============================================================================
+// TEACHERS MODULE
+// ============================================================================
+
+enum TeacherStatus {
+  ENABLED
+  DISABLED
+}
+
+model Teacher {
+  id          String        @id @default(uuid())
+  firstName   String
+  lastName    String
+  phoneNumber String?
+  status      TeacherStatus @default(ENABLED)
+
+  academyId   String
+  academy     Academy       @relation(fields: [academyId], references: [id])
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
   @@index([academyId])
 }
 

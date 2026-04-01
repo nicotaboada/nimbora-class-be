@@ -84,21 +84,39 @@ model User {
 }
 
 // ============================================================================
-// STUDENTS MODULE
+// COMMON ENUMS
 // ============================================================================
 
-enum StudentStatus {
+enum Status {
   ENABLED
   DISABLED
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  NOT_SPECIFIED
+}
+
+enum DocumentType {
+  DNI
+  PASSPORT
+  NIE
+  OTHER
+}
+
+// ============================================================================
+// STUDENTS MODULE
+// ============================================================================
+
 model Student {
-  id          String        @id @default(uuid())
+  id          String   @id @default(uuid())
   firstName   String
   lastName    String
-  email       String        @unique
+  email       String   @unique
   phoneNumber String?
-  status      StudentStatus @default(ENABLED)
+  status      Status   @default(ENABLED)
   
   academyId   String
   academy     Academy       @relation(fields: [academyId], references: [id])
@@ -121,34 +139,16 @@ model Student {
 // TEACHERS MODULE
 // ============================================================================
 
-enum TeacherStatus {
-  ENABLED
-  DISABLED
-}
-
-enum TeacherGender {
-  MALE
-  FEMALE
-  OTHER
-  NOT_SPECIFIED
-}
-
-enum TeacherDocumentType {
-  DNI
-  PASSPORT
-  NIE
-  OTHER
-}
-
 model Teacher {
-  id             String                 @id @default(uuid())
+  id             String       @id @default(uuid())
   firstName      String
   lastName       String
   birthDate      DateTime?
-  gender         TeacherGender?
-  documentType   TeacherDocumentType?
+  gender         Gender?
+  documentType   DocumentType?
   documentNumber String?
-  status         TeacherStatus          @default(ENABLED)
+  avatarUrl      String?
+  status         Status       @default(ENABLED)
 
   academyId      String
   academy        Academy                @relation(fields: [academyId], references: [id])

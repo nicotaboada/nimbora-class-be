@@ -1,32 +1,31 @@
-import { Teacher as PrismaTeacher, ContactInfo as PrismaContactInfo } from "@prisma/client";
 import {
-  Teacher,
-  TeacherStatus,
-  TeacherGender,
-  TeacherDocumentType,
-} from "../entities/teacher.entity";
+  Teacher as PrismaTeacher,
+  ContactInfo as PrismaContactInfo,
+} from "@prisma/client";
+import { Teacher } from "../entities/teacher.entity";
 import { ContactInfo } from "../../contact-info/entities/contact-info.entity";
+import { Status, Gender, DocumentType } from "../../common/enums";
 
 export function mapTeacherToEntity(
-  prismaTeacher: PrismaTeacher & { contactInfo?: PrismaContactInfo | null }
+  prismaTeacher: PrismaTeacher & { contactInfo?: PrismaContactInfo | null },
 ): Teacher {
-  const statusMap: Record<string, TeacherStatus> = {
-    ENABLED: TeacherStatus.ENABLED,
-    DISABLED: TeacherStatus.DISABLED,
+  const statusMap: Record<string, Status> = {
+    ENABLED: Status.ENABLED,
+    DISABLED: Status.DISABLED,
   };
 
-  const genderMap: Record<string, TeacherGender | undefined> = {
-    MALE: TeacherGender.MALE,
-    FEMALE: TeacherGender.FEMALE,
-    OTHER: TeacherGender.OTHER,
-    NOT_SPECIFIED: TeacherGender.NOT_SPECIFIED,
+  const genderMap: Record<string, Gender | undefined> = {
+    MALE: Gender.MALE,
+    FEMALE: Gender.FEMALE,
+    OTHER: Gender.OTHER,
+    NOT_SPECIFIED: Gender.NOT_SPECIFIED,
   };
 
-  const documentTypeMap: Record<string, TeacherDocumentType | undefined> = {
-    DNI: TeacherDocumentType.DNI,
-    PASSPORT: TeacherDocumentType.PASSPORT,
-    NIE: TeacherDocumentType.NIE,
-    OTHER: TeacherDocumentType.OTHER,
+  const documentTypeMap: Record<string, DocumentType | undefined> = {
+    DNI: DocumentType.DNI,
+    PASSPORT: DocumentType.PASSPORT,
+    NIE: DocumentType.NIE,
+    OTHER: DocumentType.OTHER,
   };
 
   const contactInfo = prismaTeacher.contactInfo
@@ -44,8 +43,9 @@ export function mapTeacherToEntity(
       ? documentTypeMap[prismaTeacher.documentType]
       : undefined,
     documentNumber: prismaTeacher.documentNumber,
+    avatarUrl: prismaTeacher.avatarUrl,
     contactInfo,
-    status: statusMap[prismaTeacher.status] || TeacherStatus.ENABLED,
+    status: statusMap[prismaTeacher.status] || Status.ENABLED,
     createdAt: prismaTeacher.createdAt,
     updatedAt: prismaTeacher.updatedAt,
   };

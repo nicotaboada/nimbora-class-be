@@ -6,7 +6,7 @@ import {
   IsEmail,
   IsDate,
 } from "class-validator";
-import { TeacherGender, TeacherDocumentType } from "../entities/teacher.entity";
+import { Gender, DocumentType } from "../../common/enums";
 
 @InputType()
 export class CreateTeacherInput {
@@ -36,12 +36,12 @@ export class CreateTeacherInput {
   birthDate?: Date;
 
   @IsOptional()
-  @Field(() => TeacherGender, { nullable: true })
-  gender?: TeacherGender;
+  @Field(() => Gender, { nullable: true })
+  gender?: Gender;
 
   @IsOptional()
-  @Field(() => TeacherDocumentType, { nullable: true })
-  documentType?: TeacherDocumentType;
+  @Field(() => DocumentType, { nullable: true })
+  documentType?: DocumentType;
 
   @IsOptional()
   @IsString({ message: "El número de documento debe ser texto" })

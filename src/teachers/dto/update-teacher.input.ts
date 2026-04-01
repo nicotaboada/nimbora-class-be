@@ -7,11 +7,7 @@ import {
   IsEmail,
   IsDate,
 } from "class-validator";
-import {
-  TeacherStatus,
-  TeacherGender,
-  TeacherDocumentType,
-} from "../entities/teacher.entity";
+import { Status, Gender, DocumentType } from "../../common/enums";
 
 @InputType()
 export class UpdateTeacherInput {
@@ -46,12 +42,12 @@ export class UpdateTeacherInput {
   birthDate?: Date;
 
   @IsOptional()
-  @Field(() => TeacherGender, { nullable: true })
-  gender?: TeacherGender;
+  @Field(() => Gender, { nullable: true })
+  gender?: Gender;
 
   @IsOptional()
-  @Field(() => TeacherDocumentType, { nullable: true })
-  documentType?: TeacherDocumentType;
+  @Field(() => DocumentType, { nullable: true })
+  documentType?: DocumentType;
 
   @IsOptional()
   @IsString({ message: "El número de documento debe ser texto" })
@@ -59,7 +55,12 @@ export class UpdateTeacherInput {
   documentNumber?: string;
 
   @IsOptional()
-  @IsEnum(TeacherStatus, { message: "Estado inválido" })
-  @Field(() => TeacherStatus, { nullable: true })
-  status?: TeacherStatus;
+  @IsString({ message: "La URL del avatar debe ser texto" })
+  @Field({ nullable: true })
+  avatarUrl?: string;
+
+  @IsOptional()
+  @IsEnum(Status, { message: "Estado inválido" })
+  @Field(() => Status, { nullable: true })
+  status?: Status;
 }

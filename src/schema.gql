@@ -1520,6 +1520,7 @@ type TaxpayerInfo {
 
 type Teacher {
   academyId: String!
+  avatarUrl: String
   birthDate: DateTime
   contactInfo: ContactInfo
   createdAt: DateTime!
@@ -1651,6 +1652,7 @@ input UpdateStudentInput {
 }
 
 input UpdateTeacherInput {
+  avatarUrl: String
   birthDate: DateTime
   documentNumber: String
   documentType: TeacherDocumentType

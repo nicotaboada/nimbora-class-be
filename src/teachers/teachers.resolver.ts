@@ -9,7 +9,7 @@ import { PaginatedTeachers } from "./dto/paginated-teachers.output";
 import { CreateTeacherInput } from "./dto/create-teacher.input";
 import { UpdateTeacherInput } from "./dto/update-teacher.input";
 import { UpdateContactInfoInput } from "../contact-info/dto/update-contact-info.input";
-import { TeacherStatus } from "./entities/teacher.entity";
+import { Status } from "src/common/enums";
 
 @Resolver(() => Teacher)
 @UseGuards(SupabaseAuthGuard)
@@ -38,8 +38,8 @@ export class TeachersResolver {
     @Args("limit", { type: () => Int }) limit: number,
     @CurrentUser() user: User,
     @Args("search", { type: () => String, nullable: true }) search?: string,
-    @Args("status", { type: () => TeacherStatus, nullable: true })
-    status?: TeacherStatus,
+    @Args("status", { type: () => Status, nullable: true })
+    status?: Status,
   ): Promise<any> {
     return this.teachersService.findAll(
       page,

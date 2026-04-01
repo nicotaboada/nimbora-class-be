@@ -380,6 +380,17 @@ After implementing a feature, use these skills to document it automatically:
 → /doc-add feature-name (commit docs)
 ```
 
+## Plans — Backend
+
+Especificaciones técnicas del backend para cada feature completada.
+Agregar una línea aquí después de cada feature implementada:
+```markdown
+- [Plan - [nombre-feature]](/docs/plans/[nombre-feature]-backend.md) — Schema Prisma + API GraphQL
+```
+
+Ejemplo:
+- [Plan - Módulo de Profesores](/docs/plans/modulo-de-profesores-backend.md) — Schema Prisma + API GraphQL
+
 ## When Working with Me (Claude)
 - I'll read this file to understand the backend architecture
 - I know feature modules are self-contained → I'll focus on the specific module you're working on

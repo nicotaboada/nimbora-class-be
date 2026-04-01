@@ -629,7 +629,12 @@ input CreateStudentInput {
 }
 
 input CreateTeacherInput {
+  birthYear: Int
+  documentNumber: String
+  documentType: TeacherDocumentType
+  email: String
   firstName: String!
+  gender: TeacherGender
   lastName: String!
   phoneNumber: String
 }
@@ -1500,13 +1505,34 @@ type TaxpayerInfo {
 
 type Teacher {
   academyId: String!
+  birthYear: Int
   createdAt: DateTime!
+  documentNumber: String
+  documentType: TeacherDocumentType
+  email: String
   firstName: String!
+  gender: TeacherGender
   id: String!
   lastName: String!
   phoneNumber: String
   status: TeacherStatus!
   updatedAt: DateTime!
+}
+
+"""Tipo de documento de identidad del profesor"""
+enum TeacherDocumentType {
+  DNI
+  NIE
+  OTHER
+  PASSPORT
+}
+
+"""Género del profesor"""
+enum TeacherGender {
+  FEMALE
+  MALE
+  NOT_SPECIFIED
+  OTHER
 }
 
 type TeacherStats {
@@ -1599,7 +1625,12 @@ input UpdateStudentInput {
 }
 
 input UpdateTeacherInput {
+  birthYear: Int
+  documentNumber: String
+  documentType: TeacherDocumentType
+  email: String
   firstName: String
+  gender: TeacherGender
   id: String!
   lastName: String
   phoneNumber: String

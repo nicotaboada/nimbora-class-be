@@ -126,18 +126,37 @@ enum TeacherStatus {
   DISABLED
 }
 
+enum TeacherGender {
+  MALE
+  FEMALE
+  OTHER
+  NOT_SPECIFIED
+}
+
+enum TeacherDocumentType {
+  DNI
+  PASSPORT
+  NIE
+  OTHER
+}
+
 model Teacher {
-  id          String        @id @default(uuid())
-  firstName   String
-  lastName    String
-  phoneNumber String?
-  status      TeacherStatus @default(ENABLED)
+  id             String                 @id @default(uuid())
+  firstName      String
+  lastName       String
+  email          String?
+  phoneNumber    String?
+  birthYear      Int?
+  gender         TeacherGender?
+  documentType   TeacherDocumentType?
+  documentNumber String?
+  status         TeacherStatus          @default(ENABLED)
 
-  academyId   String
-  academy     Academy       @relation(fields: [academyId], references: [id])
+  academyId      String
+  academy        Academy                @relation(fields: [academyId], references: [id])
 
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
 
   @@index([academyId])
 }

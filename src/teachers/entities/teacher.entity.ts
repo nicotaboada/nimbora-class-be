@@ -1,4 +1,5 @@
 import { ObjectType, Field, registerEnumType, Int } from "@nestjs/graphql";
+import { ContactInfo } from "../../contact-info/entities/contact-info.entity";
 
 export enum TeacherStatus {
   ENABLED = "ENABLED",
@@ -44,11 +45,7 @@ export class Teacher {
 
   @Field() lastName: string;
 
-  @Field({ nullable: true }) email?: string;
-
-  @Field({ nullable: true }) phoneNumber?: string;
-
-  @Field(() => Int, { nullable: true }) birthYear?: number;
+  @Field({ nullable: true }) birthDate?: Date;
 
   @Field(() => TeacherGender, { nullable: true }) gender?: TeacherGender;
 
@@ -56,6 +53,8 @@ export class Teacher {
   documentType?: TeacherDocumentType;
 
   @Field({ nullable: true }) documentNumber?: string;
+
+  @Field(() => ContactInfo, { nullable: true }) contactInfo?: ContactInfo;
 
   @Field(() => TeacherStatus) status: TeacherStatus;
 

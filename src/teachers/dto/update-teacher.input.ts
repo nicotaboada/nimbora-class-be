@@ -1,11 +1,11 @@
-import { InputType, Field, Int } from "@nestjs/graphql";
+import { InputType, Field } from "@nestjs/graphql";
 import {
   IsNotEmpty,
   IsString,
   IsOptional,
   IsEnum,
   IsEmail,
-  IsInt,
+  IsDate,
 } from "class-validator";
 import {
   TeacherStatus,
@@ -41,9 +41,9 @@ export class UpdateTeacherInput {
   phoneNumber?: string;
 
   @IsOptional()
-  @IsInt({ message: "El año de nacimiento debe ser un número" })
-  @Field(() => Int, { nullable: true })
-  birthYear?: number;
+  @IsDate({ message: "La fecha de nacimiento debe ser una fecha válida" })
+  @Field({ nullable: true })
+  birthDate?: Date;
 
   @IsOptional()
   @Field(() => TeacherGender, { nullable: true })

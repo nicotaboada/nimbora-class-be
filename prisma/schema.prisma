@@ -144,9 +144,7 @@ model Teacher {
   id             String                 @id @default(uuid())
   firstName      String
   lastName       String
-  email          String?
-  phoneNumber    String?
-  birthYear      Int?
+  birthDate      DateTime?
   gender         TeacherGender?
   documentType   TeacherDocumentType?
   documentNumber String?
@@ -155,10 +153,34 @@ model Teacher {
   academyId      String
   academy        Academy                @relation(fields: [academyId], references: [id])
 
+  contactInfo    ContactInfo?
+
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
 
   @@index([academyId])
+}
+
+model ContactInfo {
+  id               String   @id @default(uuid())
+
+  teacherId        String?  @unique
+  teacher          Teacher? @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  email            String?
+  phoneCountryCode String?
+  phoneNumber      String?
+
+  address          String?
+  country          String?
+  state            String?
+  city             String?
+  postalCode       String?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([teacherId])
 }
 
 // ============================================================================

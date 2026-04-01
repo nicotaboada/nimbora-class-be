@@ -528,6 +528,20 @@ type ChargesForInvoiceOutput {
   charges: [Charge!]!
 }
 
+type ContactInfo {
+  address: String
+  city: String
+  country: String
+  createdAt: DateTime!
+  email: String
+  id: String!
+  phoneCountryCode: String
+  phoneNumber: String
+  postalCode: String
+  state: String
+  updatedAt: DateTime!
+}
+
 input CreateAcademyInput {
   address: String
   country: String!
@@ -629,7 +643,7 @@ input CreateStudentInput {
 }
 
 input CreateTeacherInput {
-  birthYear: Int
+  birthDate: DateTime
   documentNumber: String
   documentType: TeacherDocumentType
   email: String
@@ -986,6 +1000,7 @@ type Mutation {
   updatePeriodicFee(input: UpdatePeriodicFeeInput!): Fee!
   updateStudent(updateStudentInput: UpdateStudentInput!): Student!
   updateTeacher(updateTeacherInput: UpdateTeacherInput!): Teacher!
+  updateTeacherContactInfo(input: UpdateContactInfoInput!): Teacher!
   updateUser(input: UpdateUserInput!): User!
 
   """Crea o actualiza un perfil de facturación de un alumno"""
@@ -1505,16 +1520,15 @@ type TaxpayerInfo {
 
 type Teacher {
   academyId: String!
-  birthYear: Int
+  birthDate: DateTime
+  contactInfo: ContactInfo
   createdAt: DateTime!
   documentNumber: String
   documentType: TeacherDocumentType
-  email: String
   firstName: String!
   gender: TeacherGender
   id: String!
   lastName: String!
-  phoneNumber: String
   status: TeacherStatus!
   updatedAt: DateTime!
 }
@@ -1579,6 +1593,18 @@ input UpdateAfipSalesPointInput {
   name: String!
 }
 
+input UpdateContactInfoInput {
+  address: String
+  city: String
+  country: String
+  email: String
+  phoneCountryCode: String
+  phoneNumber: String
+  postalCode: String
+  state: String
+  teacherId: String!
+}
+
 input UpdateInvoiceLineInput {
   """Razón del descuento"""
   discountReason: String
@@ -1625,7 +1651,7 @@ input UpdateStudentInput {
 }
 
 input UpdateTeacherInput {
-  birthYear: Int
+  birthDate: DateTime
   documentNumber: String
   documentType: TeacherDocumentType
   email: String

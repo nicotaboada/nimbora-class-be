@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args } from '@nestjs/graphql'
+import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql'
 import { UseGuards } from '@nestjs/common'
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator'
 import { SupabaseAuthGuard } from 'src/auth/guards/supabase-auth.guard'
@@ -33,12 +33,12 @@ export class TeachersResolver {
 
 	@Query(() => PaginatedTeachers, { name: 'teachers' })
 	async findAll(
-		@Args('page', { type: () => Number, defaultValue: 1 }) page: number,
-		@Args('limit', { type: () => Number, defaultValue: 25 }) limit: number,
+		@Args('page', { type: () => Int }) page: number,
+		@Args('limit', { type: () => Int }) limit: number,
+		@CurrentUser() user: User,
 		@Args('search', { type: () => String, nullable: true }) search?: string,
 		@Args('status', { type: () => TeacherStatus, nullable: true })
 		status?: TeacherStatus,
-		@CurrentUser() user: User,
 	): Promise<any> {
 		return this.teachersService.findAll(page, limit, search, status, user.academyId)
 	}

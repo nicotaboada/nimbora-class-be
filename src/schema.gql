@@ -628,6 +628,12 @@ input CreateStudentInput {
   phoneNumber: String
 }
 
+input CreateTeacherInput {
+  firstName: String!
+  lastName: String!
+  phoneNumber: String
+}
+
 input CreateUserInput {
   academyId: String!
   email: String!
@@ -923,6 +929,7 @@ type Mutation {
   createOneOffFee(input: CreateOneOffFeeInput!): Fee!
   createPeriodicFee(input: CreatePeriodicFeeInput!): Fee!
   createStudent(createStudentInput: CreateStudentInput!): Student!
+  createTeacher(createTeacherInput: CreateTeacherInput!): Teacher!
   createUser(input: CreateUserInput!): User!
 
   """Elimina un punto de venta AFIP (no se puede eliminar si está activo)"""
@@ -936,6 +943,7 @@ type Mutation {
   """Remueve una línea de una factura"""
   removeInvoiceLine(lineId: ID!): Invoice!
   removeStudent(id: String!): Student!
+  removeTeacher(id: String!): Teacher!
   removeUser(id: String!): User!
 
   """Envía la factura AFIP por email con el PDF adjunto"""
@@ -972,6 +980,7 @@ type Mutation {
   updateOneOffFee(input: UpdateOneOffFeeInput!): Fee!
   updatePeriodicFee(input: UpdatePeriodicFeeInput!): Fee!
   updateStudent(updateStudentInput: UpdateStudentInput!): Student!
+  updateTeacher(updateTeacherInput: UpdateTeacherInput!): Teacher!
   updateUser(input: UpdateUserInput!): User!
 
   """Crea o actualiza un perfil de facturación de un alumno"""
@@ -1035,6 +1044,11 @@ type PaginatedStudentsForBulkInvoice {
   data: [StudentBulkInvoicePreview!]!
 
   """Metadata de paginación"""
+  meta: PaginationMeta!
+}
+
+type PaginatedTeachers {
+  data: [Teacher!]!
   meta: PaginationMeta!
 }
 
@@ -1234,6 +1248,9 @@ type Query {
 
   """Estudiantes con charges pendientes para facturación masiva (paginado)"""
   studentsForBulkInvoice(input: StudentsForBulkInvoiceInput!, limit: Int = 10, page: Int = 1): PaginatedStudentsForBulkInvoice!
+  teacher(id: String!): Teacher!
+  teacherStats: TeacherStats!
+  teachers(limit: Int!, page: Int!, search: String, status: TeacherStatus): PaginatedTeachers!
   user(id: String!): User
   userBySupabaseId(supabaseUserId: String!): User
   users: [User!]!
@@ -1481,6 +1498,29 @@ type TaxpayerInfo {
   zipCode: String
 }
 
+type Teacher {
+  academyId: String!
+  createdAt: DateTime!
+  firstName: String!
+  id: String!
+  lastName: String!
+  phoneNumber: String
+  status: TeacherStatus!
+  updatedAt: DateTime!
+}
+
+type TeacherStats {
+  active: Int!
+  inactive: Int!
+  total: Int!
+}
+
+"""Estado del profesor (activado/desactivado)"""
+enum TeacherStatus {
+  DISABLED
+  ENABLED
+}
+
 input UnassignFeeInput {
   """ID del fee a desasignar"""
   feeId: String!
@@ -1556,6 +1596,14 @@ input UpdateStudentInput {
   lastName: String
   phoneNumber: String
   status: StudentStatus
+}
+
+input UpdateTeacherInput {
+  firstName: String
+  id: String!
+  lastName: String
+  phoneNumber: String
+  status: TeacherStatus
 }
 
 input UpdateUserInput {

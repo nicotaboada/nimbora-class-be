@@ -6,7 +6,7 @@ import { CreateStudentInput } from "./dto/create-student.input";
 import { UpdateStudentInput } from "./dto/update-student.input";
 import { PaginatedStudents } from "./dto/paginated-students.output";
 import { StudentStats } from "./entities/student-stats.entity";
-import { StudentStatus } from "./entities/student.entity";
+import { Status } from "../common/enums";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
 import { User } from "../users/entities/user.entity";
@@ -40,8 +40,8 @@ export class StudentsResolver {
     @Args("limit", { type: () => Int, nullable: true, defaultValue: 10 })
     limit: number,
     @Args("search", { type: () => String, nullable: true }) search?: string,
-    @Args("status", { type: () => StudentStatus, nullable: true })
-    status?: StudentStatus,
+    @Args("status", { type: () => Status, nullable: true })
+    status?: Status,
   ) {
     return this.studentsService.findAll(
       user.academyId,

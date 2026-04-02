@@ -3,7 +3,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CreateStudentInput } from "./dto/create-student.input";
 import { UpdateStudentInput } from "./dto/update-student.input";
 import { Prisma } from "@prisma/client";
-import { Student, StudentStatus } from "./entities/student.entity";
+import { Student } from "./entities/student.entity";
+import { Status } from "../common/enums";
 import { mapStudentToEntity } from "./utils/student-mapper.util";
 import { assertOwnership } from "../common/utils/tenant-validation";
 
@@ -20,7 +21,7 @@ export class StudentsService {
         data: {
           ...createStudentInput,
           academyId,
-          status: StudentStatus.ENABLED,
+          status: Status.ENABLED,
         },
       });
       return mapStudentToEntity(student);
@@ -50,7 +51,7 @@ export class StudentsService {
     page = 1,
     limit = 10,
     search?: string,
-    status?: StudentStatus,
+    status?: Status,
   ) {
     const validPage = Math.max(1, page);
     const validLimit = Math.min(Math.max(1, limit), 100);
@@ -137,10 +138,10 @@ export class StudentsService {
     const [total, active, inactive] = await Promise.all([
       this.prisma.student.count({ where: { academyId } }),
       this.prisma.student.count({
-        where: { academyId, status: StudentStatus.ENABLED },
+        where: { academyId, status: Status.ENABLED },
       }),
       this.prisma.student.count({
-        where: { academyId, status: StudentStatus.DISABLED },
+        where: { academyId, status: Status.DISABLED },
       }),
     ]);
 

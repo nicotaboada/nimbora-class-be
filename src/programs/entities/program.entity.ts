@@ -1,8 +1,8 @@
 import { ObjectType, Field } from "@nestjs/graphql";
-import { Status } from "../../common/enums";
+import { Status, Language } from "../../common/enums";
 
 @ObjectType()
-export class Student {
+export class Program {
   @Field()
   id: string;
 
@@ -10,16 +10,13 @@ export class Student {
   academyId: string;
 
   @Field()
-  firstName: string;
+  name: string;
 
-  @Field()
-  lastName: string;
-
-  @Field()
-  email: string;
+  @Field(() => Language)
+  language: Language;
 
   @Field({ nullable: true })
-  phoneNumber?: string;
+  description?: string;
 
   @Field(() => Status)
   status: Status;

@@ -1,6 +1,6 @@
 import { Student as PrismaStudent } from "@prisma/client";
 import { Student } from "../entities/student.entity";
-import { StudentStatus } from "../entities/student.entity";
+import { Status } from "../../common/enums";
 
 /**
  * Maps a Prisma Student to the Student entity.
@@ -8,9 +8,9 @@ import { StudentStatus } from "../entities/student.entity";
  * @returns The mapped Student entity
  */
 export function mapStudentToEntity(prismaStudent: PrismaStudent): Student {
-  const statusMap: Record<PrismaStudent["status"], StudentStatus> = {
-    ENABLED: StudentStatus.ENABLED,
-    DISABLED: StudentStatus.DISABLED,
+  const statusMap: Record<PrismaStudent["status"], Status> = {
+    ENABLED: Status.ENABLED,
+    DISABLED: Status.DISABLED,
   };
 
   return {

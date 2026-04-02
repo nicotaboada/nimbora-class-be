@@ -1,11 +1,17 @@
-import { InputType, Field } from '@nestjs/graphql';
-import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
-import { StudentStatus } from '../entities/student.entity';
+import { InputType, Field } from "@nestjs/graphql";
+import {
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from "class-validator";
+import { Status } from "../../common/enums";
 
 @InputType()
 export class UpdateStudentInput {
   @Field()
-  @IsNotEmpty({ message: 'El ID es requerido' })
+  @IsNotEmpty({ message: "El ID es requerido" })
   @IsString()
   id: string;
 
@@ -21,7 +27,7 @@ export class UpdateStudentInput {
 
   @Field({ nullable: true })
   @IsOptional()
-  @IsEmail({}, { message: 'El email debe tener un formato válido' })
+  @IsEmail({}, { message: "El email debe tener un formato válido" })
   email?: string;
 
   @Field({ nullable: true })
@@ -29,8 +35,8 @@ export class UpdateStudentInput {
   @IsString()
   phoneNumber?: string;
 
-  @Field(() => StudentStatus, { nullable: true })
+  @Field(() => Status, { nullable: true })
   @IsOptional()
-  @IsEnum(StudentStatus, { message: 'El status debe ser ENABLED o DISABLED' })
-  status?: StudentStatus;
+  @IsEnum(Status, { message: "El status debe ser ENABLED o DISABLED" })
+  status?: Status;
 }

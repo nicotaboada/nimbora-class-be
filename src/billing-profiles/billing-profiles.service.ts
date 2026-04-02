@@ -58,7 +58,8 @@ export class BillingProfilesService {
       where: { id },
     });
 
-    return assertOwnership(profile, academyId, "BillingProfile");
+    assertOwnership(profile, academyId, "BillingProfile");
+    return profile;
   }
 
   /**

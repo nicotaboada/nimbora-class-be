@@ -5,6 +5,8 @@ import * as path from "node:path";
 import { PrismaModule } from "./prisma/prisma.module";
 import { StudentsModule } from "./students/students.module";
 import { TeachersModule } from "./teachers/teachers.module";
+import { ProgramsModule } from "./programs/programs.module";
+import { ClassesModule } from "./classes/classes.module";
 import { FeesModule } from "./fees/fees.module";
 import { ChargesModule } from "./charges/charges.module";
 import { InvoicesModule } from "./invoices/invoices.module";
@@ -32,6 +34,8 @@ import { BulkOperationsModule } from "./bulk-operations/bulk-operations.module";
     AuthModule,
     StudentsModule,
     TeachersModule,
+    ProgramsModule,
+    ClassesModule,
     FeesModule,
     ChargesModule,
     InvoicesModule,

@@ -51,6 +51,8 @@ model Academy {
   users           User[]
   students        Student[]
   teachers        Teacher[]
+  programs        Program[]
+  classes         Class[]
   fees            Fee[]
   invoices        Invoice[]
   features        AcademyFeature[]
@@ -106,6 +108,14 @@ enum DocumentType {
   OTHER
 }
 
+enum Language {
+  ENGLISH
+  SPANISH
+  FRENCH
+  ITALIAN
+  PORTUGUESE
+}
+
 // ============================================================================
 // STUDENTS MODULE
 // ============================================================================
@@ -154,6 +164,7 @@ model Teacher {
   academy        Academy                @relation(fields: [academyId], references: [id])
 
   contactInfo    ContactInfo?
+  classes        Class[]
 
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
@@ -180,6 +191,51 @@ model ContactInfo {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
+  @@index([teacherId])
+}
+
+// ============================================================================
+// PROGRAMS & CLASSES MODULE
+// ============================================================================
+
+model Program {
+  id          String   @id @default(uuid())
+  name        String
+  language    Language
+  description String?
+  status      Status   @default(ENABLED)
+
+  academyId   String
+  academy     Academy  @relation(fields: [academyId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  classes     Class[]
+
+  @@index([academyId])
+}
+
+model Class {
+  id        String   @id @default(uuid())
+  name      String
+  programId String
+  program   Program  @relation(fields: [programId], references: [id])
+  teacherId String
+  teacher   Teacher  @relation(fields: [teacherId], references: [id])
+  startDate DateTime
+  endDate   DateTime
+  capacity  Int?
+  code      String?
+
+  academyId String
+  academy   Academy  @relation(fields: [academyId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([academyId])
+  @@index([programId])
   @@index([teacherId])
 }
 

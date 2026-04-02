@@ -1250,7 +1250,7 @@ type Program {
   createdAt: DateTime!
   description: String
   id: String!
-  language: String!
+  language: Language!
   name: String!
   status: Status!
   updatedAt: DateTime!
@@ -1363,7 +1363,7 @@ type Query {
   """Overview financiero de un alumno: facturas impagas/pagadas y totales"""
   studentInvoiceOverview(studentId: ID!): StudentInvoiceOverview!
   studentStats: StudentStats!
-  students(limit: Int = 10, page: Int = 1, search: String, status: StudentStatus): PaginatedStudents!
+  students(limit: Int = 10, page: Int = 1, search: String, status: Status): PaginatedStudents!
 
   """Estudiantes con charges pendientes para facturación masiva (paginado)"""
   studentsForBulkInvoice(input: StudentsForBulkInvoiceInput!, limit: Int = 10, page: Int = 1): PaginatedStudentsForBulkInvoice!
@@ -1405,7 +1405,7 @@ type Student {
   id: String!
   lastName: String!
   phoneNumber: String
-  status: StudentStatus!
+  status: Status!
   updatedAt: DateTime!
 }
 
@@ -1573,12 +1573,6 @@ type StudentStats {
   total: Int!
 }
 
-"""Estado del estudiante (activado/desactivado)"""
-enum StudentStatus {
-  DISABLED
-  ENABLED
-}
-
 input StudentsForBulkInvoiceInput {
   """Incluir cargos pendientes de periodos anteriores al seleccionado"""
   includePastDue: Boolean! = false
@@ -1731,7 +1725,7 @@ input UpdateStudentInput {
   id: String!
   lastName: String
   phoneNumber: String
-  status: StudentStatus
+  status: Status
 }
 
 input UpdateTeacherInput {

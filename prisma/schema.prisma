@@ -127,21 +127,22 @@ model Student {
   email       String   @unique
   phoneNumber String?
   status      Status   @default(ENABLED)
-  
+
   academyId   String
   academy     Academy       @relation(fields: [academyId], references: [id])
-  
+
   // Link opcional a User (cuando el estudiante puede loguearse)
   userId      String?       @unique
   user        User?         @relation(fields: [userId], references: [id])
-  
+
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   charges         Charge[]
   invoices        Invoice[]
   credits         StudentCredit[]
   billingProfiles BillingProfile[]
-  
+  classStudents   ClassStudent[]
+
   @@index([academyId])
 }
 
@@ -231,12 +232,29 @@ model Class {
   academyId String
   academy   Academy  @relation(fields: [academyId], references: [id])
 
+  students  ClassStudent[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([academyId])
   @@index([programId])
   @@index([teacherId])
+}
+
+model ClassStudent {
+  id        String   @id @default(uuid())
+  classId   String
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([classId, studentId])
+  @@index([classId])
+  @@index([studentId])
 }
 
 // ============================================================================

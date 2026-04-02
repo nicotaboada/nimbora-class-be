@@ -1,6 +1,6 @@
 import { Program as PrismaProgram } from "@prisma/client";
 import { Program } from "../entities/program.entity";
-import { Language, Status } from "../../common/enums";
+import { Status, Language } from "../../common/enums";
 
 const statusMap: Record<string, Status> = {
   ENABLED: Status.ENABLED,
@@ -8,10 +8,8 @@ const statusMap: Record<string, Status> = {
 };
 
 const languageMap: Record<string, Language> = {
-  ENGLISH: Language.ENGLISH,
   SPANISH: Language.SPANISH,
-  FRENCH: Language.FRENCH,
-  ITALIAN: Language.ITALIAN,
+  ENGLISH: Language.ENGLISH,
   PORTUGUESE: Language.PORTUGUESE,
 };
 
@@ -20,7 +18,7 @@ export function mapProgramToEntity(p: PrismaProgram): Program {
     id: p.id,
     academyId: p.academyId,
     name: p.name,
-    language: languageMap[p.language],
+    language: languageMap[p.language] || Language.SPANISH,
     description: p.description ?? undefined,
     status: statusMap[p.status] || Status.ENABLED,
     createdAt: p.createdAt,

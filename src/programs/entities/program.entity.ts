@@ -1,5 +1,5 @@
 import { ObjectType, Field } from "@nestjs/graphql";
-import { Language, Status } from "../../common/enums";
+import { Status, Language } from "../../common/enums";
 
 @ObjectType()
 export class Program {

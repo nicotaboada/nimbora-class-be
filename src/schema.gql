@@ -528,6 +528,31 @@ type ChargesForInvoiceOutput {
   charges: [Charge!]!
 }
 
+type Class {
+  academyId: String!
+  capacity: Int
+  code: String
+  createdAt: DateTime!
+  endDate: DateTime!
+  id: String!
+  name: String!
+  program: Program!
+  startDate: DateTime!
+  studentCount: Int!
+  teacher: Teacher!
+  updatedAt: DateTime!
+}
+
+input ClassesFilterInput {
+  """Cantidad de items por página (máx 100)"""
+  limit: Int = 10
+
+  """Número de página (desde 1)"""
+  page: Int = 1
+  programId: String
+  search: String
+}
+
 type ContactInfo {
   address: String
   city: String
@@ -561,6 +586,15 @@ input CreateAfipSalesPointInput {
 
   """Número de punto de venta en ARCA"""
   number: Int!
+}
+
+input CreateClassInput {
+  capacity: Float
+  endDate: DateTime!
+  name: String!
+  programId: String!
+  startDate: DateTime!
+  teacherId: String!
 }
 
 input CreateInvoiceInput {
@@ -635,6 +669,12 @@ input CreatePeriodicFeeInput {
   startDate: DateTime!
 }
 
+input CreateProgramInput {
+  description: String
+  language: Language!
+  name: String!
+}
+
 input CreateStudentInput {
   email: String!
   firstName: String!
@@ -645,10 +685,10 @@ input CreateStudentInput {
 input CreateTeacherInput {
   birthDate: DateTime
   documentNumber: String
-  documentType: TeacherDocumentType
+  documentType: DocumentType
   email: String
   firstName: String!
-  gender: TeacherGender
+  gender: Gender
   lastName: String!
   phoneNumber: String
 }
@@ -687,6 +727,14 @@ enum DiscountType {
 
   """Descuento porcentual (0-100)"""
   PERCENT
+}
+
+"""Tipo de documento de identidad"""
+enum DocumentType {
+  DNI
+  NIE
+  OTHER
+  PASSPORT
 }
 
 type Fee {
@@ -735,6 +783,14 @@ enum FeeType {
   MONTHLY
   ONE_OFF
   PERIODIC
+}
+
+"""Género de la persona"""
+enum Gender {
+  FEMALE
+  MALE
+  NOT_SPECIFIED
+  OTHER
 }
 
 type Invoice {
@@ -910,6 +966,20 @@ input InvoicesForBulkAfipInput {
   search: String
 }
 
+"""Idioma del programa"""
+enum Language {
+  ENGLISH
+  FRENCH
+  ITALIAN
+  PORTUGUESE
+  SPANISH
+}
+
+type LanguageOption {
+  code: Language!
+  label: String!
+}
+
 type Mutation {
   """Agrega una línea a una factura existente"""
   addInvoiceLine(input: AddInvoiceLineInput!): Invoice!
@@ -941,12 +1011,14 @@ type Mutation {
   Crea un punto de venta AFIP (sin validar contra ARCA, usar validateAfipSalesPoint después)
   """
   createAfipSalesPoint(input: CreateAfipSalesPointInput!): AfipSalesPoint!
+  createClass(createClassInput: CreateClassInput!): Class!
 
   """Crea una nueva factura"""
   createInvoice(input: CreateInvoiceInput!): Invoice!
   createMonthlyFee(input: CreateMonthlyFeeInput!): Fee!
   createOneOffFee(input: CreateOneOffFeeInput!): Fee!
   createPeriodicFee(input: CreatePeriodicFeeInput!): Fee!
+  createProgram(createProgramInput: CreateProgramInput!): Program!
   createStudent(createStudentInput: CreateStudentInput!): Student!
   createTeacher(createTeacherInput: CreateTeacherInput!): Teacher!
   createUser(input: CreateUserInput!): User!
@@ -1024,6 +1096,14 @@ type Mutation {
 
   """Anula un pago (soft delete)"""
   voidPayment(input: VoidPaymentInput!): Invoice!
+}
+
+type PaginatedClasses {
+  """Lista de items"""
+  data: [Class!]!
+
+  """Metadata de paginación"""
+  meta: PaginationMeta!
 }
 
 type PaginatedFees {
@@ -1165,6 +1245,22 @@ enum PaymentType {
   REFUND
 }
 
+type Program {
+  academyId: String!
+  createdAt: DateTime!
+  description: String
+  id: String!
+  language: String!
+  name: String!
+  status: Status!
+  updatedAt: DateTime!
+}
+
+type ProgramsByLanguage {
+  language: Language!
+  programs: [Program!]!
+}
+
 type Query {
   academies: [Academy!]!
   academy(id: String!): Academy
@@ -1205,6 +1301,7 @@ type Query {
 
   """Obtiene cargos para facturación de un estudiante"""
   chargesForInvoice(input: ChargesForInvoiceInput!): ChargesForInvoiceOutput!
+  classes(filter: ClassesFilterInput): PaginatedClasses!
 
   """Lista todos los feature flags de la academy"""
   featureFlags: [AcademyFeature!]!
@@ -1222,6 +1319,7 @@ type Query {
 
   """Verifica si un feature está habilitado"""
   isFeatureEnabled(key: String!): Boolean!
+  languages: [LanguageOption!]!
 
   """Consulta datos del contribuyente en ARCA por CUIT"""
   lookupCuit(
@@ -1237,6 +1335,7 @@ type Query {
 
   """Lista los pagos de una factura"""
   paymentsByInvoice(invoiceId: ID!): [Payment!]!
+  programs: [ProgramsByLanguage!]!
   student(id: String!): Student!
 
   """
@@ -1270,7 +1369,7 @@ type Query {
   studentsForBulkInvoice(input: StudentsForBulkInvoiceInput!, limit: Int = 10, page: Int = 1): PaginatedStudentsForBulkInvoice!
   teacher(id: String!): Teacher!
   teacherStats: TeacherStats!
-  teachers(limit: Int!, page: Int!, search: String, status: TeacherStatus): PaginatedTeachers!
+  teachers(limit: Int!, page: Int!, search: String, status: Status): PaginatedTeachers!
   user(id: String!): User
   userBySupabaseId(supabaseUserId: String!): User
   users: [User!]!
@@ -1290,6 +1389,12 @@ input SetupAfipSettingsInput {
 
   """Condición impositiva de la academy"""
   taxStatus: AcademyTaxStatus!
+}
+
+"""Estado genérico (activado/desactivado)"""
+enum Status {
+  DISABLED
+  ENABLED
 }
 
 type Student {
@@ -1525,41 +1630,19 @@ type Teacher {
   contactInfo: ContactInfo
   createdAt: DateTime!
   documentNumber: String
-  documentType: TeacherDocumentType
+  documentType: DocumentType
   firstName: String!
-  gender: TeacherGender
+  gender: Gender
   id: String!
   lastName: String!
-  status: TeacherStatus!
+  status: Status!
   updatedAt: DateTime!
-}
-
-"""Tipo de documento de identidad del profesor"""
-enum TeacherDocumentType {
-  DNI
-  NIE
-  OTHER
-  PASSPORT
-}
-
-"""Género del profesor"""
-enum TeacherGender {
-  FEMALE
-  MALE
-  NOT_SPECIFIED
-  OTHER
 }
 
 type TeacherStats {
   active: Int!
   inactive: Int!
   total: Int!
-}
-
-"""Estado del profesor (activado/desactivado)"""
-enum TeacherStatus {
-  DISABLED
-  ENABLED
 }
 
 input UnassignFeeInput {
@@ -1655,14 +1738,14 @@ input UpdateTeacherInput {
   avatarUrl: String
   birthDate: DateTime
   documentNumber: String
-  documentType: TeacherDocumentType
+  documentType: DocumentType
   email: String
   firstName: String
-  gender: TeacherGender
+  gender: Gender
   id: String!
   lastName: String
   phoneNumber: String
-  status: TeacherStatus
+  status: Status
 }
 
 input UpdateUserInput {

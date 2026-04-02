@@ -11,10 +11,7 @@ import { Language } from "../common/enums";
 export class ProgramsService {
   constructor(private prisma: PrismaService) {}
 
-  async create(
-    input: CreateProgramInput,
-    academyId: string,
-  ): Promise<Program> {
+  async create(input: CreateProgramInput, academyId: string): Promise<Program> {
     const program = await this.prisma.program.create({
       data: {
         ...input,
@@ -42,15 +39,21 @@ export class ProgramsService {
 
     const grouped = new Map<Language, Program[]>();
 
-    for (const p of programs) {
-      const lang = p.language as Language;
-      if (!grouped.has(lang)) {
-        grouped.set(lang, []);
-      }
-      grouped.get(lang)!.push(mapProgramToEntity(p));
+    // Initialize all languages with empty arrays
+    for (const lang of Object.values(Language)) {
+      grouped.set(lang, []);
     }
 
-    return Array.from(grouped.entries()).map(([language, items]) => ({
+    // Add programs to their respective language groups
+    for (const prismaProgram of programs) {
+      const program = mapProgramToEntity(prismaProgram);
+      const group = grouped.get(program.language);
+      if (group) {
+        group.push(program);
+      }
+    }
+
+    return [...grouped.entries()].map(([language, items]) => ({
       language,
       programs: items,
     }));

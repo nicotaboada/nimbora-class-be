@@ -1,4 +1,9 @@
-import { Class as PrismaClass, Program as PrismaProgram, Teacher as PrismaTeacher, ContactInfo as PrismaContactInfo } from "@prisma/client";
+import {
+  Class as PrismaClass,
+  Program as PrismaProgram,
+  Teacher as PrismaTeacher,
+  ContactInfo as PrismaContactInfo,
+} from "@prisma/client";
 import { ClassEntity } from "../entities/class.entity";
 import { mapTeacherToEntity } from "../../teachers/utils/teacher-mapper.util";
 import { mapProgramToEntity } from "../../programs/utils/program-mapper.util";
@@ -7,6 +12,7 @@ export function mapClassToEntity(
   prismaClass: PrismaClass & {
     program: PrismaProgram;
     teacher: PrismaTeacher & { contactInfo?: PrismaContactInfo | null };
+    students?: { id: string }[];
   },
 ): ClassEntity {
   return {
@@ -19,6 +25,7 @@ export function mapClassToEntity(
     endDate: prismaClass.endDate,
     capacity: prismaClass.capacity ?? undefined,
     code: prismaClass.code ?? undefined,
+    studentCount: prismaClass.students?.length ?? 0,
     createdAt: prismaClass.createdAt,
     updatedAt: prismaClass.updatedAt,
   };

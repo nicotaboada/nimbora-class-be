@@ -12,11 +12,13 @@ import { NotFoundException } from "@nestjs/common";
  * const charge = await prisma.charge.findUnique({ where: { id } });
  * assertFound(charge, "Charge");
  */
-export function assertFound<T>(entity: T | null, name: string): T {
+export function assertFound<T>(
+  entity: T | null,
+  name: string,
+): asserts entity is T {
   if (!entity) {
     throw new NotFoundException(`${name} not found`);
   }
-  return entity;
 }
 
 /**
@@ -37,9 +39,8 @@ export function assertOwnership<T extends { academyId: string }>(
   entity: T | null,
   academyId: string,
   name: string,
-): T {
+): asserts entity is T {
   if (!entity || entity.academyId !== academyId) {
     throw new NotFoundException(`${name} not found`);
   }
-  return entity;
 }

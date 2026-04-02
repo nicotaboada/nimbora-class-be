@@ -8,15 +8,7 @@ import { CreateProgramInput } from "./dto/create-program.input";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
 import { User } from "../users/entities/user.entity";
-import { Language } from "../common/enums";
-
-const LANGUAGE_LABELS: Record<Language, string> = {
-  [Language.ENGLISH]: "English",
-  [Language.SPANISH]: "Spanish",
-  [Language.FRENCH]: "French",
-  [Language.ITALIAN]: "Italian",
-  [Language.PORTUGUESE]: "Portuguese",
-};
+import { Language, LANGUAGE_LABELS } from "../common/enums";
 
 @Resolver(() => Program)
 @UseGuards(SupabaseAuthGuard)

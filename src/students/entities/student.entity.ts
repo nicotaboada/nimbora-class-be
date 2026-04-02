@@ -1,14 +1,5 @@
-import { ObjectType, Field, registerEnumType } from "@nestjs/graphql";
-
-export enum StudentStatus {
-  ENABLED = "ENABLED",
-  DISABLED = "DISABLED",
-}
-
-registerEnumType(StudentStatus, {
-  name: "StudentStatus",
-  description: "Estado del estudiante (activado/desactivado)",
-});
+import { ObjectType, Field } from "@nestjs/graphql";
+import { Status } from "../../common/enums";
 
 @ObjectType()
 export class Student {
@@ -30,8 +21,8 @@ export class Student {
   @Field({ nullable: true })
   phoneNumber?: string;
 
-  @Field(() => StudentStatus)
-  status: StudentStatus;
+  @Field(() => Status)
+  status: Status;
 
   @Field()
   createdAt: Date;

@@ -89,6 +89,11 @@ export class ClassesService {
               contactInfo: true,
             },
           },
+          students: {
+            select: {
+              id: true,
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
       }),

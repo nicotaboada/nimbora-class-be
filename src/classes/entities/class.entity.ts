@@ -31,6 +31,9 @@ export class ClassEntity {
   @Field({ nullable: true })
   code?: string;
 
+  @Field(() => Int, { defaultValue: 0 })
+  studentCount: number;
+
   @Field()
   createdAt: Date;
 

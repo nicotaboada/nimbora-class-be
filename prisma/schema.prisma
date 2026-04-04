@@ -228,6 +228,7 @@ model Class {
   endDate   DateTime
   capacity  Int?
   code      String?
+  description String?
 
   academyId String
   academy   Academy  @relation(fields: [academyId], references: [id])

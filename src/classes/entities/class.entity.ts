@@ -31,6 +31,12 @@ export class ClassEntity {
   @Field({ nullable: true })
   code?: string;
 
+  @Field({ nullable: true })
+  description?: string;
+
+  @Field(() => [String], { defaultValue: [] })
+  tags: string[];
+
   @Field(() => Int, { defaultValue: 0 })
   studentCount: number;
 

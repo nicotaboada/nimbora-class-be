@@ -242,6 +242,20 @@ type AssignFeeOutput {
   chargesCreated: Int!
 }
 
+input AssignStudentsToClassInput {
+  classId: String!
+  studentIds: [String!]!
+}
+
+input AvailableStudentsFilterInput {
+  """Cantidad de items por página (máx 100)"""
+  limit: Int = 10
+
+  """Número de página (desde 1)"""
+  page: Int = 1
+  search: String
+}
+
 """Tipo de documento fiscal del receptor"""
 enum BillingDocType {
   CONSUMIDOR_FINAL
@@ -533,12 +547,14 @@ type Class {
   capacity: Int
   code: String
   createdAt: DateTime!
+  description: String
   endDate: DateTime!
   id: String!
   name: String!
   program: Program!
   startDate: DateTime!
   studentCount: Int!
+  tags: [String!]!
   teacher: Teacher!
   updatedAt: DateTime!
 }
@@ -989,6 +1005,7 @@ type Mutation {
 
   """Asigna un fee a estudiantes"""
   assignFeeToStudents(input: AssignFeeInput!): AssignFeeOutput!
+  assignStudentsToClass(assignStudentsToClassInput: AssignStudentsToClassInput!): Class!
 
   """Emite facturas en AFIP en bulk. Retorna el operationId para polling."""
   bulkCreateAfipInvoices(input: BulkCreateAfipInvoicesInput!): BulkOperation!
@@ -1034,6 +1051,7 @@ type Mutation {
   """Remueve una línea de una factura"""
   removeInvoiceLine(lineId: ID!): Invoice!
   removeStudent(id: String!): Student!
+  removeStudentFromClass(classId: String!, studentId: String!): Class!
   removeTeacher(id: String!): Teacher!
   removeUser(id: String!): User!
 
@@ -1064,6 +1082,7 @@ type Mutation {
     id: String!
     input: UpdateAfipSalesPointInput!
   ): AfipSalesPoint!
+  updateClass(updateClassInput: UpdateClassInput!): Class!
 
   """Actualiza el descuento de una línea"""
   updateInvoiceLine(input: UpdateInvoiceLineInput!): Invoice!
@@ -1096,6 +1115,14 @@ type Mutation {
 
   """Anula un pago (soft delete)"""
   voidPayment(input: VoidPaymentInput!): Invoice!
+}
+
+type PaginatedClassStudents {
+  """Lista de estudiantes en la clase"""
+  data: [Student!]!
+
+  """Metadata de paginación"""
+  meta: PaginationMeta!
 }
 
 type PaginatedClasses {
@@ -1280,6 +1307,7 @@ type Query {
 
   """Obtiene la configuración AFIP de la academy (incluye onboardingStep)"""
   afipSettings: AcademyAfipSettings
+  availableStudentsForClass(classId: String!, filter: AvailableStudentsFilterInput): PaginatedClassStudents!
 
   """Obtiene un perfil de facturación por ID"""
   billingProfile(
@@ -1301,6 +1329,8 @@ type Query {
 
   """Obtiene cargos para facturación de un estudiante"""
   chargesForInvoice(input: ChargesForInvoiceInput!): ChargesForInvoiceOutput!
+  class(id: String!): Class!
+  classStudents(classId: String!, limit: Int! = 10, page: Int! = 1, search: String): PaginatedClassStudents!
   classes(filter: ClassesFilterInput): PaginatedClasses!
 
   """Lista todos los feature flags de la academy"""
@@ -1669,6 +1699,18 @@ input UpdateAcademyInput {
 input UpdateAfipSalesPointInput {
   """Nuevo nombre descriptivo del punto de venta"""
   name: String!
+}
+
+input UpdateClassInput {
+  capacity: Int
+  code: String
+  description: String
+  endDate: DateTime
+  id: String!
+  name: String
+  programId: String
+  startDate: DateTime
+  teacherId: String
 }
 
 input UpdateContactInfoInput {

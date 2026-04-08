@@ -59,6 +59,8 @@ model Academy {
   afipSettings    AcademyAfipSettings?
   billingProfiles BillingProfile[]
   bulkOperations  BulkOperation[]
+  families        Family[]
+  familyGuardians FamilyGuardian[]
 }
 
 model User {
@@ -108,6 +110,17 @@ enum DocumentType {
   OTHER
 }
 
+enum GuardianRelationship {
+  PADRE
+  MADRE
+  ABUELO
+  ABUELA
+  TIO
+  TIA
+  TUTOR
+  OTRO
+}
+
 enum Language {
   ENGLISH
   SPANISH
@@ -135,6 +148,10 @@ model Student {
   userId      String?       @unique
   user        User?         @relation(fields: [userId], references: [id])
 
+  // Link a Family (cada estudiante pertenece a máximo una familia)
+  familyId    String?
+  family      Family?       @relation(fields: [familyId], references: [id])
+
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   charges         Charge[]
@@ -144,6 +161,7 @@ model Student {
   classStudents   ClassStudent[]
 
   @@index([academyId])
+  @@index([familyId])
 }
 
 // ============================================================================
@@ -193,6 +211,67 @@ model ContactInfo {
   updatedAt        DateTime @updatedAt
 
   @@index([teacherId])
+}
+
+// ============================================================================
+// FAMILIES MODULE
+// ============================================================================
+
+model Family {
+  id        String   @id @default(uuid())
+  academyId String
+  academy   Academy  @relation(fields: [academyId], references: [id])
+
+  name      String
+  tags      String[]
+  status    Status   @default(ENABLED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  guardians FamilyGuardian[]
+  students  Student[]
+
+  @@index([academyId])
+  // NOTA: Agregar GIN index manualmente en migration SQL:
+  // CREATE INDEX "Family_tags_idx" ON "Family" USING GIN ("tags");
+}
+
+model FamilyGuardian {
+  id               String               @id @default(uuid())
+  academyId        String
+  academy          Academy              @relation(fields: [academyId], references: [id])
+
+  familyId         String
+  family           Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  // Información personal
+  firstName        String
+  lastName         String
+  relationship     GuardianRelationship
+  birthDate        DateTime?
+  documentType     DocumentType?
+  documentNumber   String?
+
+  // Información de contacto (embebida flat)
+  email            String?
+  phoneCountryCode String?
+  phoneNumber      String?
+  address          String?
+  city             String?
+  state            String?
+  country          String?
+  postalCode       String?
+
+  // Preferencias
+  emailNotifications Boolean @default(true)
+  status             Status  @default(ENABLED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([familyId])
+  @@index([academyId])
 }
 
 // ============================================================================

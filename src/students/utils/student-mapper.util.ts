@@ -21,6 +21,7 @@ export function mapStudentToEntity(prismaStudent: PrismaStudent): Student {
     email: prismaStudent.email,
     phoneNumber: prismaStudent.phoneNumber ?? undefined,
     status: statusMap[prismaStudent.status],
+    familyId: prismaStudent.familyId ?? undefined,
     createdAt: prismaStudent.createdAt,
     updatedAt: prismaStudent.updatedAt,
   };

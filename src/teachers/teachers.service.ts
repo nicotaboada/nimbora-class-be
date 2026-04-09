@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { Prisma, Status } from "@prisma/client";
 import { PrismaService } from "src/prisma/prisma.service";
 import { CreateTeacherInput } from "./dto/create-teacher.input";
 import { UpdateTeacherInput } from "./dto/update-teacher.input";
@@ -7,9 +8,20 @@ import { mapTeacherToEntity } from "./utils/teacher-mapper.util";
 import { Teacher, TeacherStats } from "./entities/teacher.entity";
 import { assertOwnership } from "src/common/utils/tenant-validation";
 
+interface TeacherPagination {
+  data: Teacher[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
 @Injectable()
 export class TeachersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(input: CreateTeacherInput, academyId: string): Promise<Teacher> {
     const teacher = await this.prisma.teacher.create({
@@ -17,6 +29,7 @@ export class TeachersService {
         ...input,
         academyId,
       },
+      include: { contactInfo: true },
     });
 
     return mapTeacherToEntity(teacher);
@@ -25,40 +38,34 @@ export class TeachersService {
   async findAll(
     page: number,
     limit: number,
+    academyId: string,
     search?: string,
-    status?: string,
-    academyId?: string,
-  ): Promise<{ data: Teacher[]; meta: any }> {
+    status?: Status,
+  ): Promise<TeacherPagination> {
     const skip = (page - 1) * limit;
 
-    const where: any = {
+    const where = {
       academyId,
-    };
-
-    if (search) {
-      where.OR = [
-        { firstName: { contains: search, mode: "insensitive" } },
-        { lastName: { contains: search, mode: "insensitive" } },
-      ];
-    }
-
-    if (status) {
-      where.status = status;
-    }
-
-    const [teachers, total] = await Promise.all([
-      this.prisma.teacher.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: "desc" },
-        include: { contactInfo: true },
+      ...(search && {
+        OR: [
+          { firstName: { contains: search, mode: "insensitive" } },
+          { lastName: { contains: search, mode: "insensitive" } },
+        ],
       }),
-      this.prisma.teacher.count({ where }),
-    ]);
+      ...(status && { status }),
+    } satisfies Prisma.TeacherWhereInput;
+
+    const teachers = await this.prisma.teacher.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+      include: { contactInfo: true },
+    });
+    const total = await this.prisma.teacher.count({ where });
 
     return {
-      data: teachers.map(mapTeacherToEntity),
+      data: teachers.map((element) => mapTeacherToEntity(element)),
       meta: {
         page,
         limit,
@@ -92,6 +99,7 @@ export class TeachersService {
     const updated = await this.prisma.teacher.update({
       where: { id },
       data: updateData,
+      include: { contactInfo: true },
     });
 
     return mapTeacherToEntity(updated);
@@ -106,6 +114,7 @@ export class TeachersService {
 
     const deleted = await this.prisma.teacher.delete({
       where: { id },
+      include: { contactInfo: true },
     });
 
     return mapTeacherToEntity(deleted);

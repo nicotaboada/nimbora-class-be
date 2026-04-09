@@ -1,11 +1,7 @@
 import { Program as PrismaProgram } from "@prisma/client";
 import { Program } from "../entities/program.entity";
 import { Status, Language } from "../../common/enums";
-
-const statusMap: Record<string, Status> = {
-  ENABLED: Status.ENABLED,
-  DISABLED: Status.DISABLED,
-};
+import { statusMap } from "../../common/utils/enum-maps.util";
 
 const languageMap: Record<string, Language> = {
   SPANISH: Language.SPANISH,

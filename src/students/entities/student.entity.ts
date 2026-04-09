@@ -24,6 +24,9 @@ export class Student {
   @Field(() => Status)
   status: Status;
 
+  @Field({ nullable: true })
+  familyId?: string;
+
   @Field()
   createdAt: Date;
 

@@ -1,19 +1,9 @@
-import { InputType, Field, Int } from "@nestjs/graphql";
-import { IsOptional, IsString, IsInt, Min, Max } from "class-validator";
+import { InputType, Field } from "@nestjs/graphql";
+import { IsOptional, IsString } from "class-validator";
+import { PaginationInput } from "../../common/dto/pagination.input";
 
 @InputType()
-export class AvailableStudentsForFamilyInput {
-  @Field(() => Int, { defaultValue: 1 })
-  @IsInt()
-  @Min(1)
-  page: number = 1;
-
-  @Field(() => Int, { defaultValue: 10 })
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit: number = 10;
-
+export class AvailableStudentsForFamilyInput extends PaginationInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsString()

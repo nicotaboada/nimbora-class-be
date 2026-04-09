@@ -1,6 +1,13 @@
-import { InputType, Field } from '@nestjs/graphql';
-import { IsString, IsEmail, IsOptional, MinLength, MaxLength, IsEnum } from 'class-validator';
-import { GuardianRelationship } from '../enums/guardian-relationship.enum';
+import { InputType, Field } from "@nestjs/graphql";
+import {
+  IsString,
+  IsEmail,
+  IsOptional,
+  MinLength,
+  MaxLength,
+  IsEnum,
+} from "class-validator";
+import { GuardianRelationship } from "../enums/guardian-relationship.enum";
 
 @InputType()
 export class UpdateGuardianInput {
@@ -36,4 +43,9 @@ export class UpdateGuardianInput {
   @IsOptional()
   @IsString()
   phoneNumber?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
 }

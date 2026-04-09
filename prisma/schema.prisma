@@ -250,6 +250,7 @@ model FamilyGuardian {
   lastName         String
   relationship     GuardianRelationship
   birthDate        DateTime?
+  gender           Gender?
   documentType     DocumentType?
   documentNumber   String?
 
@@ -266,6 +267,7 @@ model FamilyGuardian {
   // Preferencias
   emailNotifications Boolean @default(true)
   status             Status  @default(ENABLED)
+  avatarUrl          String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -256,6 +256,15 @@ input AvailableStudentsFilterInput {
   search: String
 }
 
+input AvailableStudentsForFamilyInput {
+  """Cantidad de items por página (máx 100)"""
+  limit: Int = 10
+
+  """Número de página (desde 1)"""
+  page: Int = 1
+  search: String
+}
+
 """Tipo de documento fiscal del receptor"""
 enum BillingDocType {
   CONSUMIDOR_FINAL
@@ -559,6 +568,11 @@ type Class {
   updatedAt: DateTime!
 }
 
+type ClassSummary {
+  id: String!
+  name: String!
+}
+
 input ClassesFilterInput {
   """Cantidad de items por página (máx 100)"""
   limit: Int = 10
@@ -611,6 +625,19 @@ input CreateClassInput {
   programId: String!
   startDate: DateTime!
   teacherId: String!
+}
+
+input CreateFamilyInput {
+  name: String!
+}
+
+input CreateGuardianInput {
+  email: String
+  familyId: String
+  firstName: String!
+  lastName: String!
+  phoneNumber: String
+  relationship: GuardianRelationship!
 }
 
 input CreateInvoiceInput {
@@ -753,6 +780,35 @@ enum DocumentType {
   PASSPORT
 }
 
+type Family {
+  createdAt: DateTime!
+  guardians: [FamilyGuardianSummary!]!
+  id: String!
+  membersCount: Int!
+  name: String!
+  students: [FamilyStudentSummary!]!
+  tags: [String!]!
+}
+
+type FamilyGuardianSummary {
+  avatarUrl: String
+  email: String
+  emailNotifications: Boolean!
+  firstName: String!
+  id: String!
+  lastName: String!
+  phoneNumber: String
+  relationship: GuardianRelationship!
+}
+
+type FamilyStudentSummary {
+  classes: [ClassSummary!]!
+  firstName: String!
+  id: String!
+  isActive: Boolean!
+  lastName: String!
+}
+
 type Fee {
   """Costo en centavos"""
   cost: Int!
@@ -807,6 +863,44 @@ enum Gender {
   MALE
   NOT_SPECIFIED
   OTHER
+}
+
+type Guardian {
+  academyId: String!
+  address: String
+  avatarUrl: String
+  birthDate: DateTime
+  city: String
+  country: String
+  createdAt: DateTime!
+  documentNumber: String
+  documentType: DocumentType
+  email: String
+  emailNotifications: Boolean!
+  familyId: String
+  firstName: String!
+  gender: Gender
+  id: String!
+  isActive: Boolean!
+  lastName: String!
+  phoneCountryCode: String
+  phoneNumber: String
+  postalCode: String
+  relationship: GuardianRelationship!
+  state: String
+  students: [FamilyStudentSummary!]!
+}
+
+"""Relación del tutor con la familia"""
+enum GuardianRelationship {
+  ABUELA
+  ABUELO
+  MADRE
+  OTRO
+  PADRE
+  TIA
+  TIO
+  TUTOR
 }
 
 type Invoice {
@@ -1029,6 +1123,8 @@ type Mutation {
   """
   createAfipSalesPoint(input: CreateAfipSalesPointInput!): AfipSalesPoint!
   createClass(createClassInput: CreateClassInput!): Class!
+  createFamily(createFamilyInput: CreateFamilyInput!): Family!
+  createGuardian(createGuardianInput: CreateGuardianInput!): Guardian!
 
   """Crea una nueva factura"""
   createInvoice(input: CreateInvoiceInput!): Invoice!
@@ -1057,6 +1153,7 @@ type Mutation {
 
   """Envía la factura AFIP por email con el PDF adjunto"""
   sendAfipInvoiceEmail(invoiceId: ID!): Boolean!
+  setFamilyStudents(setFamilyStudentsInput: SetFamilyStudentsInput!): Family!
 
   """Habilita o deshabilita un feature flag"""
   setFeatureFlag(input: SetFeatureFlagInput!): AcademyFeature!
@@ -1083,6 +1180,10 @@ type Mutation {
     input: UpdateAfipSalesPointInput!
   ): AfipSalesPoint!
   updateClass(updateClassInput: UpdateClassInput!): Class!
+  updateGuardian(updateGuardianInput: UpdateGuardianInput!): Guardian!
+  updateGuardianContactInfo(input: UpdateGuardianContactInfoInput!): Guardian!
+  updateGuardianNotifications(input: UpdateGuardianNotificationsInput!): Guardian!
+  updateGuardianPersonalInfo(input: UpdateGuardianPersonalInfoInput!): Guardian!
 
   """Actualiza el descuento de una línea"""
   updateInvoiceLine(input: UpdateInvoiceLineInput!): Invoice!
@@ -1128,6 +1229,14 @@ type PaginatedClassStudents {
 type PaginatedClasses {
   """Lista de items"""
   data: [Class!]!
+
+  """Metadata de paginación"""
+  meta: PaginationMeta!
+}
+
+type PaginatedFamilies {
+  """Lista de items"""
+  data: [Family!]!
 
   """Metadata de paginación"""
   meta: PaginationMeta!
@@ -1308,6 +1417,7 @@ type Query {
   """Obtiene la configuración AFIP de la academy (incluye onboardingStep)"""
   afipSettings: AcademyAfipSettings
   availableStudentsForClass(classId: String!, filter: AvailableStudentsFilterInput): PaginatedClassStudents!
+  availableStudentsForFamily(familyId: String!, filter: AvailableStudentsForFamilyInput): PaginatedStudents!
 
   """Obtiene un perfil de facturación por ID"""
   billingProfile(
@@ -1332,11 +1442,15 @@ type Query {
   class(id: String!): Class!
   classStudents(classId: String!, limit: Int! = 10, page: Int! = 1, search: String): PaginatedClassStudents!
   classes(filter: ClassesFilterInput): PaginatedClasses!
+  families(limit: Int = 10, page: Int = 1, search: String): PaginatedFamilies!
+  family(id: String!): Family!
+  familyStudents(familyId: String!, limit: Int = 10, page: Int = 1, search: String): PaginatedStudents!
 
   """Lista todos los feature flags de la academy"""
   featureFlags: [AcademyFeature!]!
   fee(id: ID!): Fee!
   fees(limit: Int = 10, page: Int = 1): PaginatedFees!
+  guardian(id: String!): Guardian!
 
   """Obtiene una factura por ID"""
   invoice(id: ID!): Invoice!
@@ -1405,6 +1519,11 @@ type Query {
   users: [User!]!
 }
 
+input SetFamilyStudentsInput {
+  familyId: String!
+  studentIds: [String!]!
+}
+
 input SetFeatureFlagInput {
   """Enable or disable the feature"""
   enabled: Boolean!
@@ -1431,6 +1550,7 @@ type Student {
   academyId: String!
   createdAt: DateTime!
   email: String!
+  familyId: String
   firstName: String!
   id: String!
   lastName: String!
@@ -1723,6 +1843,43 @@ input UpdateContactInfoInput {
   postalCode: String
   state: String
   teacherId: String!
+}
+
+input UpdateGuardianContactInfoInput {
+  address: String
+  city: String
+  country: String
+  email: String
+  guardianId: String!
+  phoneCountryCode: String
+  phoneNumber: String
+  postalCode: String
+  state: String
+}
+
+input UpdateGuardianInput {
+  avatarUrl: String
+  email: String
+  firstName: String
+  id: String!
+  lastName: String
+  phoneNumber: String
+  relationship: GuardianRelationship
+}
+
+input UpdateGuardianNotificationsInput {
+  emailNotifications: Boolean!
+  guardianId: String!
+}
+
+input UpdateGuardianPersonalInfoInput {
+  birthDate: DateTime
+  documentNumber: String
+  documentType: DocumentType
+  firstName: String
+  gender: Gender
+  guardianId: String!
+  lastName: String
 }
 
 input UpdateInvoiceLineInput {

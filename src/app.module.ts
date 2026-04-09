@@ -19,6 +19,7 @@ import { AcademiesModule } from "./academies/academies.module";
 import { UsersModule } from "./users/users.module";
 import { AuthModule } from "./auth/auth.module";
 import { BulkOperationsModule } from "./bulk-operations/bulk-operations.module";
+import { FamiliesModule } from "./families/families.module";
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { BulkOperationsModule } from "./bulk-operations/bulk-operations.module";
     AfipModule,
     BillingProfilesModule,
     BulkOperationsModule,
+    FamiliesModule,
   ],
 })
 export class AppModule {}

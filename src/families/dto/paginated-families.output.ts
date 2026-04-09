@@ -1,12 +1,6 @@
-import { ObjectType, Field } from "@nestjs/graphql";
-import { PaginationMeta } from "../../common/dto/pagination-meta.output";
+import { ObjectType } from "@nestjs/graphql";
+import { Paginated } from "../../common/dto/paginated.output";
 import { Family } from "../entities/family.entity";
 
 @ObjectType()
-export class PaginatedFamilies {
-  @Field(() => [Family])
-  data: Family[];
-
-  @Field()
-  meta: PaginationMeta;
-}
+export class PaginatedFamilies extends Paginated(Family) {}

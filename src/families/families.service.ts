@@ -7,9 +7,13 @@ import { CreateFamilyInput } from "./dto/create-family.input";
 import { CreateGuardianInput } from "./dto/create-guardian.input";
 import { UpdateGuardianInput } from "./dto/update-guardian.input";
 import { UpdateGuardianNotificationsInput } from "./dto/update-guardian-notifications.input";
+import { UpdateGuardianPersonalInfoInput } from "./dto/update-guardian-personal-info.input";
+import { UpdateGuardianContactInfoInput } from "./dto/update-guardian-contact-info.input";
 import { assertOwnership } from "../common/utils/tenant-validation";
+import { pickDefined } from "../common/utils/pick-defined.util";
 import { mapStudentToEntity } from "../students/utils/student-mapper.util";
 import { PaginatedStudents } from "../students/dto/paginated-students.output";
+import { AvailableStudentsForFamilyInput } from "./dto/available-students-for-family.input";
 
 @Injectable()
 export class FamiliesService {
@@ -86,6 +90,7 @@ export class FamiliesService {
               firstName: true,
               lastName: true,
               relationship: true,
+              avatarUrl: true,
               emailNotifications: true,
               email: true,
               phoneNumber: true,
@@ -137,6 +142,7 @@ export class FamiliesService {
             firstName: true,
             lastName: true,
             relationship: true,
+            avatarUrl: true,
             emailNotifications: true,
             email: true,
             phoneNumber: true,
@@ -168,7 +174,7 @@ export class FamiliesService {
       },
     });
 
-    return mapGuardianToEntity(guardian);
+    return mapGuardianToEntity(guardian, []);
   }
 
   async familyStudents(
@@ -230,7 +236,7 @@ export class FamiliesService {
   async availableStudentsForFamily(
     familyId: string,
     academyId: string,
-    filter: any,
+    filter?: AvailableStudentsForFamilyInput,
   ): Promise<PaginatedStudents> {
     // Validate family ownership
     const family = await this.prisma.family.findUnique({
@@ -327,21 +333,14 @@ export class FamiliesService {
     assertOwnership(guardian, academyId, "Guardian");
 
     // Build update data only with provided fields
-    const updateData: Prisma.FamilyGuardianUpdateInput = {};
-    if (input.firstName !== undefined) updateData.firstName = input.firstName;
-    if (input.lastName !== undefined) updateData.lastName = input.lastName;
-    if (input.relationship !== undefined)
-      updateData.relationship = input.relationship;
-    if (input.email !== undefined) updateData.email = input.email;
-    if (input.phoneNumber !== undefined)
-      updateData.phoneNumber = input.phoneNumber;
+    const updateData = pickDefined(input);
 
     const updated = await this.prisma.familyGuardian.update({
       where: { id },
       data: updateData,
     });
 
-    return mapGuardianToEntity(updated);
+    return mapGuardianToEntity(updated, []);
   }
 
   async updateGuardianNotifications(
@@ -358,6 +357,87 @@ export class FamiliesService {
       data: { emailNotifications: input.emailNotifications },
     });
 
-    return mapGuardianToEntity(updated);
+    return mapGuardianToEntity(updated, []);
+  }
+
+  async updateGuardianPersonalInfo(
+    input: UpdateGuardianPersonalInfoInput,
+    academyId: string,
+  ) {
+    const guardian = await this.prisma.familyGuardian.findUnique({
+      where: { id: input.guardianId },
+    });
+    assertOwnership(guardian, academyId, "Guardian");
+
+    // Build update data only with provided fields
+    const updateData = pickDefined(input);
+
+    const updated = await this.prisma.familyGuardian.update({
+      where: { id: input.guardianId },
+      data: updateData,
+    });
+
+    return mapGuardianToEntity(updated, []);
+  }
+
+  async updateGuardianContactInfo(
+    input: UpdateGuardianContactInfoInput,
+    academyId: string,
+  ) {
+    const guardian = await this.prisma.familyGuardian.findUnique({
+      where: { id: input.guardianId },
+    });
+    assertOwnership(guardian, academyId, "Guardian");
+
+    // Build update data only with provided fields
+    const updateData = pickDefined(input);
+
+    const updated = await this.prisma.familyGuardian.update({
+      where: { id: input.guardianId },
+      data: updateData,
+    });
+
+    return mapGuardianToEntity(updated, []);
+  }
+
+  async findOneGuardian(id: string, academyId: string) {
+    const guardian = await this.prisma.familyGuardian.findUnique({
+      where: { id },
+    });
+    assertOwnership(guardian, academyId, "Guardian");
+
+    // Fetch all students associated with this guardian's family
+    const prismaStudents = await this.prisma.student.findMany({
+      where: {
+        familyId: guardian.familyId,
+        academyId,
+      },
+      include: {
+        classStudents: {
+          include: {
+            class: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Map students to FamilyStudentSummary
+    const students = prismaStudents.map((s) => ({
+      id: s.id,
+      firstName: s.firstName,
+      lastName: s.lastName,
+      isActive: s.status === "ENABLED",
+      classes: s.classStudents.map((cs) => ({
+        id: cs.class.id,
+        name: cs.class.name,
+      })),
+    }));
+
+    return mapGuardianToEntity(guardian, students);
   }
 }

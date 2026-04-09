@@ -4,32 +4,36 @@ import {
 } from "@prisma/client";
 import { Teacher } from "../entities/teacher.entity";
 import { ContactInfo } from "../../contact-info/entities/contact-info.entity";
-import { Status, Gender, DocumentType } from "../../common/enums";
+import { Status } from "../../common/enums";
+import {
+  genderMap,
+  documentTypeMap,
+  statusMap,
+} from "../../common/utils/enum-maps.util";
+
+function mapContactInfoToEntity(
+  prismaContactInfo: PrismaContactInfo,
+): ContactInfo {
+  return {
+    id: prismaContactInfo.id,
+    email: prismaContactInfo.email,
+    phoneCountryCode: prismaContactInfo.phoneCountryCode,
+    phoneNumber: prismaContactInfo.phoneNumber,
+    address: prismaContactInfo.address,
+    country: prismaContactInfo.country,
+    state: prismaContactInfo.state,
+    city: prismaContactInfo.city,
+    postalCode: prismaContactInfo.postalCode,
+    createdAt: prismaContactInfo.createdAt,
+    updatedAt: prismaContactInfo.updatedAt,
+  };
+}
 
 export function mapTeacherToEntity(
   prismaTeacher: PrismaTeacher & { contactInfo?: PrismaContactInfo | null },
 ): Teacher {
-  const statusMap: Record<string, Status> = {
-    ENABLED: Status.ENABLED,
-    DISABLED: Status.DISABLED,
-  };
-
-  const genderMap: Record<string, Gender | undefined> = {
-    MALE: Gender.MALE,
-    FEMALE: Gender.FEMALE,
-    OTHER: Gender.OTHER,
-    NOT_SPECIFIED: Gender.NOT_SPECIFIED,
-  };
-
-  const documentTypeMap: Record<string, DocumentType | undefined> = {
-    DNI: DocumentType.DNI,
-    PASSPORT: DocumentType.PASSPORT,
-    NIE: DocumentType.NIE,
-    OTHER: DocumentType.OTHER,
-  };
-
   const contactInfo = prismaTeacher.contactInfo
-    ? (prismaTeacher.contactInfo as ContactInfo)
+    ? mapContactInfoToEntity(prismaTeacher.contactInfo)
     : undefined;
 
   return {

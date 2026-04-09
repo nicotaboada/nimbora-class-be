@@ -15,6 +15,9 @@ export class FamilyGuardianSummary {
   @Field(() => GuardianRelationship)
   relationship: GuardianRelationship;
 
+  @Field({ nullable: true })
+  avatarUrl?: string | null;
+
   @Field()
   emailNotifications: boolean;
 

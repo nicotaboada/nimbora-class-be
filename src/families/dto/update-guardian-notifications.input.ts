@@ -1,5 +1,5 @@
-import { InputType, Field } from '@nestjs/graphql';
-import { IsUUID, IsBoolean } from 'class-validator';
+import { InputType, Field } from "@nestjs/graphql";
+import { IsUUID, IsBoolean } from "class-validator";
 
 @InputType()
 export class UpdateGuardianNotificationsInput {

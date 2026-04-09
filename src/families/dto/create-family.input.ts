@@ -1,5 +1,5 @@
-import { InputType, Field } from '@nestjs/graphql';
-import { IsString, MinLength, MaxLength } from 'class-validator';
+import { InputType, Field } from "@nestjs/graphql";
+import { IsString, MinLength, MaxLength } from "class-validator";
 
 @InputType()
 export class CreateFamilyInput {

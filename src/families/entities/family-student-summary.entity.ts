@@ -12,6 +12,9 @@ export class FamilyStudentSummary {
   @Field()
   lastName: string;
 
+  @Field()
+  isActive: boolean;
+
   @Field(() => [ClassSummary])
   classes: ClassSummary[];
 }

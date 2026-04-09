@@ -11,6 +11,7 @@ import { PaginatedClassStudents } from "./dto/paginated-class-students.output";
 import { mapClassToEntity } from "./utils/class-mapper.util";
 import { mapStudentToEntity } from "../students/utils/student-mapper.util";
 import { assertOwnership } from "../common/utils/tenant-validation";
+import { pickDefined } from "../common/utils/pick-defined.util";
 import { Prisma } from "@prisma/client";
 
 @Injectable()
@@ -97,16 +98,7 @@ export class ClassesService {
     }
 
     // Build update data object (exclude id field)
-    const updateData: Record<string, any> = {};
-    if (input.name !== undefined) updateData.name = input.name;
-    if (input.programId !== undefined) updateData.programId = input.programId;
-    if (input.teacherId !== undefined) updateData.teacherId = input.teacherId;
-    if (input.startDate !== undefined) updateData.startDate = input.startDate;
-    if (input.endDate !== undefined) updateData.endDate = input.endDate;
-    if (input.capacity !== undefined) updateData.capacity = input.capacity;
-    if (input.description !== undefined)
-      updateData.description = input.description;
-    if (input.code !== undefined) updateData.code = input.code;
+    const updateData = pickDefined(input);
 
     // Update class
     const cls = await this.prisma.class.update({

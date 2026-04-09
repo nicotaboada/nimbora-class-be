@@ -8,6 +8,8 @@ import { CreateFamilyInput } from "./dto/create-family.input";
 import { CreateGuardianInput } from "./dto/create-guardian.input";
 import { UpdateGuardianInput } from "./dto/update-guardian.input";
 import { UpdateGuardianNotificationsInput } from "./dto/update-guardian-notifications.input";
+import { UpdateGuardianPersonalInfoInput } from "./dto/update-guardian-personal-info.input";
+import { UpdateGuardianContactInfoInput } from "./dto/update-guardian-contact-info.input";
 import { SetFamilyStudentsInput } from "./dto/add-students-to-family.input";
 import { AvailableStudentsForFamilyInput } from "./dto/available-students-for-family.input";
 import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
@@ -18,14 +20,16 @@ import { PaginatedStudents } from "../students/dto/paginated-students.output";
 @Resolver()
 @UseGuards(SupabaseAuthGuard)
 export class FamiliesResolver {
-  constructor(private readonly familiesService: FamiliesService) {}
+  constructor(private readonly familiesService: FamiliesService) { }
 
   @Query(() => Family, { name: "family" })
-  async findOne(
-    @Args("id") id: string,
-    @CurrentUser() user: User,
-  ) {
+  async findOne(@Args("id") id: string, @CurrentUser() user: User) {
     return this.familiesService.findOne(id, user.academyId);
+  }
+
+  @Query(() => Guardian, { name: "guardian" })
+  async findOneGuardian(@Args("id") id: string, @CurrentUser() user: User) {
+    return this.familiesService.findOneGuardian(id, user.academyId);
   }
 
   @Query(() => PaginatedFamilies, { name: "families" })
@@ -108,11 +112,7 @@ export class FamiliesResolver {
     @Args("updateGuardianInput") input: UpdateGuardianInput,
     @CurrentUser() user: User,
   ) {
-    return this.familiesService.updateGuardian(
-      input.id,
-      input,
-      user.academyId,
-    );
+    return this.familiesService.updateGuardian(input.id, input, user.academyId);
   }
 
   @Mutation(() => Guardian)
@@ -121,6 +121,28 @@ export class FamiliesResolver {
     @CurrentUser() user: User,
   ) {
     return this.familiesService.updateGuardianNotifications(
+      input,
+      user.academyId,
+    );
+  }
+
+  @Mutation(() => Guardian)
+  async updateGuardianPersonalInfo(
+    @Args("input") input: UpdateGuardianPersonalInfoInput,
+    @CurrentUser() user: User,
+  ) {
+    return this.familiesService.updateGuardianPersonalInfo(
+      input,
+      user.academyId,
+    );
+  }
+
+  @Mutation(() => Guardian)
+  async updateGuardianContactInfo(
+    @Args("input") input: UpdateGuardianContactInfoInput,
+    @CurrentUser() user: User,
+  ) {
+    return this.familiesService.updateGuardianContactInfo(
       input,
       user.academyId,
     );

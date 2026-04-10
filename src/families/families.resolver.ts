@@ -20,7 +20,7 @@ import { PaginatedStudents } from "../students/dto/paginated-students.output";
 @Resolver()
 @UseGuards(SupabaseAuthGuard)
 export class FamiliesResolver {
-  constructor(private readonly familiesService: FamiliesService) { }
+  constructor(private readonly familiesService: FamiliesService) {}
 
   @Query(() => Family, { name: "family" })
   async findOne(@Args("id") id: string, @CurrentUser() user: User) {
@@ -103,6 +103,19 @@ export class FamiliesResolver {
     return this.familiesService.setFamilyStudents(
       input.familyId,
       input.studentIds,
+      user.academyId,
+    );
+  }
+
+  @Mutation(() => Family)
+  async removeGuardianFromFamily(
+    @Args("familyId") familyId: string,
+    @Args("guardianId") guardianId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.familiesService.removeGuardian(
+      guardianId,
+      familyId,
       user.academyId,
     );
   }

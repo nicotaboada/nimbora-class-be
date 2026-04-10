@@ -13,7 +13,10 @@ import { BulkOperation } from "./entities/bulk-operation.entity";
 import { BulkOperationResult } from "./entities/bulk-operation-result.entity";
 import { StudentBulkInvoicePreview } from "./entities/student-bulk-invoice-preview.entity";
 import { InvoiceBulkAfipPreview } from "./entities/invoice-bulk-afip-preview.entity";
-import { AfipBulkSummary, AfipCbteBreakdown } from "./entities/afip-bulk-summary.entity";
+import {
+  AfipBulkSummary,
+  AfipCbteBreakdown,
+} from "./entities/afip-bulk-summary.entity";
 import { PaginatedStudentsForBulkInvoice } from "./dto/paginated-students-for-bulk-invoice.output";
 import { PaginatedInvoicesForBulkAfip } from "./dto/paginated-invoices-for-bulk-afip.output";
 import { BulkOperationType } from "./enums/bulk-operation-type.enum";
@@ -207,10 +210,7 @@ export class BulkOperationsService {
     const where: Prisma.InvoiceWhereInput = {
       academyId,
       status: InvoiceStatus.PAID,
-      OR: [
-        { afip: null },
-        { afip: { status: { not: "EMITTED" } } },
-      ],
+      OR: [{ afip: null }, { afip: { status: { not: "EMITTED" } } }],
     };
 
     if (input.period) {
@@ -293,7 +293,8 @@ export class BulkOperationsService {
 
     for (const inv of invoices) {
       const recipientCondition =
-        inv.billingProfile?.taxCondition ?? BillingTaxCondition.CONSUMIDOR_FINAL;
+        inv.billingProfile?.taxCondition ??
+        BillingTaxCondition.CONSUMIDOR_FINAL;
       const cbteTipo = resolveCbteTipo(settings.taxStatus, recipientCondition);
 
       const existing = breakdownMap.get(cbteTipo) ?? { count: 0, amount: 0 };
@@ -302,14 +303,14 @@ export class BulkOperationsService {
       breakdownMap.set(cbteTipo, existing);
     }
 
-    const breakdown: AfipCbteBreakdown[] = Array.from(
-      breakdownMap.entries(),
-    ).map(([cbteTipo, data]) => ({
-      cbteTipo,
-      label: CBTE_TIPO_LABELS[cbteTipo] ?? `Tipo ${cbteTipo}`,
-      count: data.count,
-      amount: data.amount,
-    }));
+    const breakdown: AfipCbteBreakdown[] = [...breakdownMap.entries()].map(
+      ([cbteTipo, data]) => ({
+        cbteTipo,
+        label: CBTE_TIPO_LABELS[cbteTipo] ?? `Tipo ${cbteTipo}`,
+        count: data.count,
+        amount: data.amount,
+      }),
+    );
 
     return {
       totalCount: invoices.length,
@@ -376,7 +377,11 @@ export class BulkOperationsService {
         academyId,
         totalItems: invoiceIds.length,
         params: JSON.parse(
-          JSON.stringify({ invoiceIds, ptoVta, cbteFch: cbteFch.toISOString() }),
+          JSON.stringify({
+            invoiceIds,
+            ptoVta,
+            cbteFch: cbteFch.toISOString(),
+          }),
         ),
         results: [],
       },
@@ -500,7 +505,9 @@ export class BulkOperationsService {
       completedItems: operation.completedItems,
       failedItems: operation.failedItems,
       skippedItems: operation.skippedItems,
-      results: isAfip ? [] : ((operation.results as BulkOperationResult[]) ?? []),
+      results: isAfip
+        ? []
+        : ((operation.results as BulkOperationResult[]) ?? []),
       afipResults: isAfip ? ((operation.results as any[]) ?? []) : [],
       startedAt: operation.startedAt ?? undefined,
       completedAt: operation.completedAt ?? undefined,

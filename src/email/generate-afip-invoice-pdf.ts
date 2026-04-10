@@ -111,6 +111,10 @@ function cleanCuit(cuit: string): string {
   return cuit.replaceAll(/[-\s]/g, "");
 }
 
+function ensureStringArray(result: string | string[]): string[] {
+  return Array.isArray(result) ? result : [result];
+}
+
 // ── Colors ────────────────────────────────────────────────────────────────────
 
 const DARK = [23, 23, 23] as const;
@@ -183,10 +187,14 @@ export async function generateAfipInvoicePdf(
   let leftY = headerTop + 7;
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  const razonLines: string[] = doc.splitTextToSize(data.emisor.razonSocial, leftMaxW);
+  const razonLines = ensureStringArray(
+    doc.splitTextToSize(data.emisor.razonSocial, leftMaxW),
+  );
   leftY += razonLines.length * 5 + 4;
   if (data.emisor.domicilioFiscal) {
-    const domLines: string[] = doc.splitTextToSize(data.emisor.domicilioFiscal, leftMaxW);
+    const domLines = ensureStringArray(
+      doc.splitTextToSize(data.emisor.domicilioFiscal, leftMaxW),
+    );
     leftY += domLines.length * 3.5;
   }
 
@@ -241,7 +249,9 @@ export async function generateAfipInvoicePdf(
   leftY += 4;
 
   if (data.emisor.domicilioFiscal) {
-    const domLines: string[] = doc.splitTextToSize(data.emisor.domicilioFiscal, leftMaxW);
+    const domLines = ensureStringArray(
+      doc.splitTextToSize(data.emisor.domicilioFiscal, leftMaxW),
+    );
     doc.text(domLines, leftColX, leftY);
   }
 
@@ -311,9 +321,8 @@ export async function generateAfipInvoicePdf(
     doc.setTextColor(...DARK);
     doc.text("Dirección:", recRightKeyX, y);
     doc.setFont("helvetica", "normal");
-    const addrLines: string[] = doc.splitTextToSize(
-      data.recipientAddress,
-      rightX - recRightValX - 4,
+    const addrLines = ensureStringArray(
+      doc.splitTextToSize(data.recipientAddress, rightX - recRightValX - 4),
     );
     doc.text(addrLines, recRightValX, y);
   }
@@ -367,7 +376,9 @@ export async function generateAfipInvoicePdf(
     doc.setTextColor(...DARK);
 
     const maxDescW = colQty - colDesc - 15;
-    const descLines: string[] = doc.splitTextToSize(line.description || "—", maxDescW);
+    const descLines = ensureStringArray(
+      doc.splitTextToSize(line.description || "—", maxDescW),
+    );
 
     doc.text(descLines, colDesc, y);
     doc.text("1", colQty, y, { align: "center" });

@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args, Int } from "@nestjs/graphql";
+import { Resolver, Query, Mutation, Args, Int, ResolveField, Parent } from "@nestjs/graphql";
 import { UseGuards } from "@nestjs/common";
 import { CurrentUser } from "src/auth/decorators/current-user.decorator";
 import { SupabaseAuthGuard } from "src/auth/guards/supabase-auth.guard";
@@ -10,11 +10,16 @@ import { CreateTeacherInput } from "./dto/create-teacher.input";
 import { UpdateTeacherInput } from "./dto/update-teacher.input";
 import { UpdateContactInfoInput } from "../contact-info/dto/update-contact-info.input";
 import { Status } from "src/common/enums";
+import { ClassesService } from "src/classes/classes.service";
+import { ClassEntity } from "src/classes/entities/class.entity";
 
 @Resolver(() => Teacher)
 @UseGuards(SupabaseAuthGuard)
 export class TeachersResolver {
-  constructor(private readonly teachersService: TeachersService) {}
+  constructor(
+    private readonly teachersService: TeachersService,
+    private readonly classesService: ClassesService,
+  ) {}
 
   @Mutation(() => Teacher)
   async createTeacher(
@@ -44,9 +49,9 @@ export class TeachersResolver {
     return this.teachersService.findAll(
       page,
       limit,
+      user.academyId,
       search,
       status,
-      user.academyId,
     );
   }
 
@@ -77,5 +82,14 @@ export class TeachersResolver {
     @CurrentUser() user: User,
   ): Promise<Teacher> {
     return this.teachersService.updateContactInfo(input, user.academyId);
+  }
+
+  @ResolveField(() => [ClassEntity], { name: "classes" })
+  async classes(@Parent() teacher: Teacher): Promise<ClassEntity[]> {
+    const result = await this.classesService.findAll(
+      { teacherId: teacher.id },
+      teacher.academyId,
+    );
+    return result.data;
   }
 }

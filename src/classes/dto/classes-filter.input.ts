@@ -13,4 +13,9 @@ export class ClassesFilterInput extends PaginationInput {
   @IsOptional()
   @IsString()
   programId?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  teacherId?: string;
 }

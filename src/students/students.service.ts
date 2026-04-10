@@ -1,7 +1,9 @@
-import { Injectable, BadRequestException } from "@nestjs/common";
+import { Injectable, BadRequestException, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateStudentInput } from "./dto/create-student.input";
 import { UpdateStudentInput } from "./dto/update-student.input";
+import { UpdateStudentPersonalInfoInput } from "./dto/update-student-personal-info.input";
+import { UpdateStudentContactInfoInput } from "./dto/update-student-contact-info.input";
 import { Prisma } from "@prisma/client";
 import { Student } from "./entities/student.entity";
 import { Status } from "../common/enums";
@@ -10,6 +12,7 @@ import { assertOwnership } from "../common/utils/tenant-validation";
 
 @Injectable()
 export class StudentsService {
+  private readonly logger = new Logger(StudentsService.name);
   constructor(private prisma: PrismaService) {}
 
   async create(
@@ -123,6 +126,33 @@ export class StudentsService {
       }
       throw new BadRequestException("Error al actualizar el estudiante");
     }
+  }
+
+  async updatePersonalInfo(
+    input: UpdateStudentPersonalInfoInput,
+    academyId: string,
+  ): Promise<Student> {
+    const { id, ...data } = input;
+    await this.findOne(id, academyId);
+
+    const student = await this.prisma.student.update({
+      where: { id },
+      data,
+    });
+    return mapStudentToEntity(student);
+  }
+
+  async updateContactInfo(
+    input: UpdateStudentContactInfoInput,
+    academyId: string,
+  ): Promise<Student> {
+    const { studentId, ...data } = input;
+    await this.findOne(studentId, academyId);
+    const student = await this.prisma.student.update({
+      where: { id: studentId },
+      data,
+    });
+    return mapStudentToEntity(student);
   }
 
   async remove(id: string, academyId: string): Promise<Student> {

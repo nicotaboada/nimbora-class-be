@@ -237,10 +237,7 @@ describe("PaymentsService Integration Tests", () => {
       where: { invoiceId: invoice.id },
     });
 
-    const result = await invoicesService.voidInvoice(
-      invoice.id,
-      testAcademyId,
-    );
+    const result = await invoicesService.voidInvoice(invoice.id, testAcademyId);
 
     expectInvoice(result, {
       status: InvoiceStatus.VOID,
@@ -321,10 +318,7 @@ describe("PaymentsService Integration Tests", () => {
       where: { invoiceId: invoice.id },
     });
 
-    const result = await invoicesService.voidInvoice(
-      invoice.id,
-      testAcademyId,
-    );
+    const result = await invoicesService.voidInvoice(invoice.id, testAcademyId);
 
     expectInvoice(result, {
       status: InvoiceStatus.VOID,

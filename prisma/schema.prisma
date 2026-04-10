@@ -152,6 +152,20 @@ model Student {
   familyId    String?
   family      Family?       @relation(fields: [familyId], references: [id])
 
+  // Información personal
+  birthDate        DateTime?
+  gender           Gender?
+  documentType     DocumentType?
+  documentNumber   String?
+
+  // Información de contacto
+  phoneCountryCode String?
+  address          String?
+  city             String?
+  state            String?
+  country          String?
+  postalCode       String?
+
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   charges         Charge[]

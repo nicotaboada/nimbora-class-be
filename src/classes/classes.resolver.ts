@@ -104,4 +104,12 @@ export class ClassesResolver {
       filter ?? {},
     );
   }
+
+  @Query(() => [ClassEntity], { name: "classesByStudent" })
+  findByStudent(
+    @Args("studentId") studentId: string,
+    @CurrentUser() user: User,
+  ): Promise<ClassEntity[]> {
+    return this.classesService.findByStudent(studentId, user.academyId);
+  }
 }

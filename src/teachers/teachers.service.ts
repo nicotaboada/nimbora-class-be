@@ -21,7 +21,7 @@ interface TeacherPagination {
 
 @Injectable()
 export class TeachersService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(input: CreateTeacherInput, academyId: string): Promise<Teacher> {
     const teacher = await this.prisma.teacher.create({

@@ -581,6 +581,7 @@ input ClassesFilterInput {
   page: Int = 1
   programId: String
   search: String
+  teacherId: String
 }
 
 type ContactInfo {
@@ -1143,6 +1144,7 @@ type Mutation {
   ): Boolean!
   deleteFee(id: ID!): Fee!
   removeAcademy(id: String!): Academy!
+  removeGuardianFromFamily(familyId: String!, guardianId: String!): Family!
 
   """Remueve una línea de una factura"""
   removeInvoiceLine(lineId: ID!): Invoice!
@@ -1191,6 +1193,8 @@ type Mutation {
   updateOneOffFee(input: UpdateOneOffFeeInput!): Fee!
   updatePeriodicFee(input: UpdatePeriodicFeeInput!): Fee!
   updateStudent(updateStudentInput: UpdateStudentInput!): Student!
+  updateStudentContactInfo(input: UpdateStudentContactInfoInput!): Student!
+  updateStudentPersonalInfo(input: UpdateStudentPersonalInfoInput!): Student!
   updateTeacher(updateTeacherInput: UpdateTeacherInput!): Teacher!
   updateTeacherContactInfo(input: UpdateContactInfoInput!): Teacher!
   updateUser(input: UpdateUserInput!): User!
@@ -1442,6 +1446,7 @@ type Query {
   class(id: String!): Class!
   classStudents(classId: String!, limit: Int! = 10, page: Int! = 1, search: String): PaginatedClassStudents!
   classes(filter: ClassesFilterInput): PaginatedClasses!
+  classesByStudent(studentId: String!): [Class!]!
   families(limit: Int = 10, page: Int = 1, search: String): PaginatedFamilies!
   family(id: String!): Family!
   familyStudents(familyId: String!, limit: Int = 10, page: Int = 1, search: String): PaginatedStudents!
@@ -1548,13 +1553,24 @@ enum Status {
 
 type Student {
   academyId: String!
+  address: String
+  birthDate: DateTime
+  city: String
+  classes: [Class!]
+  country: String
   createdAt: DateTime!
+  documentNumber: String
+  documentType: DocumentType
   email: String!
   familyId: String
   firstName: String!
+  gender: Gender
   id: String!
   lastName: String!
+  phoneCountryCode: String
   phoneNumber: String
+  postalCode: String
+  state: String
   status: Status!
   updatedAt: DateTime!
 }
@@ -1771,6 +1787,7 @@ type Teacher {
   academyId: String!
   avatarUrl: String
   birthDate: DateTime
+  classes: [Class!]
   contactInfo: ContactInfo
   createdAt: DateTime!
   documentNumber: String
@@ -1918,6 +1935,18 @@ input UpdatePeriodicFeeInput {
   startDate: DateTime
 }
 
+input UpdateStudentContactInfoInput {
+  address: String
+  city: String
+  country: String
+  email: String
+  phoneCountryCode: String
+  phoneNumber: String
+  postalCode: String
+  state: String
+  studentId: String!
+}
+
 input UpdateStudentInput {
   email: String
   firstName: String
@@ -1925,6 +1954,16 @@ input UpdateStudentInput {
   lastName: String
   phoneNumber: String
   status: Status
+}
+
+input UpdateStudentPersonalInfoInput {
+  birthDate: String
+  documentNumber: String
+  documentType: DocumentType
+  firstName: String
+  gender: Gender
+  id: String!
+  lastName: String
 }
 
 input UpdateTeacherInput {

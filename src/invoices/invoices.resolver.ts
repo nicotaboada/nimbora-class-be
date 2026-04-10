@@ -109,7 +109,8 @@ export class InvoicesResolver {
    */
   @Query(() => StudentInvoiceOverview, {
     name: "studentInvoiceOverview",
-    description: "Overview financiero de un alumno: facturas impagas/pagadas y totales",
+    description:
+      "Overview financiero de un alumno: facturas impagas/pagadas y totales",
   })
   async getStudentOverview(
     @Args("studentId", { type: () => ID }) studentId: string,

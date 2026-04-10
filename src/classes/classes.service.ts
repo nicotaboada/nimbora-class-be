@@ -130,6 +130,7 @@ export class ClassesService {
     const limit = filter?.limit ?? 10;
     const search = filter?.search;
     const programId = filter?.programId;
+    const teacherId = filter?.teacherId;
 
     const validPage = Math.max(1, page);
     const validLimit = Math.min(Math.max(1, limit), 100);
@@ -149,6 +150,10 @@ export class ClassesService {
 
     if (programId) {
       where.programId = programId;
+    }
+
+    if (teacherId) {
+      where.teacherId = teacherId;
     }
 
     const [total, data] = await Promise.all([
@@ -389,5 +394,31 @@ export class ClassesService {
         hasPreviousPage: validPage > 1,
       },
     };
+  }
+
+  async findByStudent(
+    studentId: string,
+    academyId: string,
+  ): Promise<ClassEntity[]> {
+    const records = await this.prisma.classStudent.findMany({
+      where: {
+        studentId,
+        class: { academyId },
+      },
+      include: {
+        class: {
+          include: {
+            program: true,
+            teacher: {
+              include: {
+                contactInfo: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return records.map((r) => mapClassToEntity(r.class));
   }
 }

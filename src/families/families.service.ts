@@ -400,6 +400,25 @@ export class FamiliesService {
     return mapGuardianToEntity(updated, []);
   }
 
+  async removeGuardian(
+    guardianId: string,
+    familyId: string,
+    academyId: string,
+  ) {
+    const guardian = await this.prisma.familyGuardian.findUnique({
+      where: { id: guardianId },
+    });
+    assertOwnership(guardian, academyId, "Guardian");
+
+    if (guardian.familyId !== familyId) {
+      throw new BadRequestException("Guardian does not belong to this family");
+    }
+
+    await this.prisma.familyGuardian.delete({ where: { id: guardianId } });
+
+    return this.findOne(familyId, academyId);
+  }
+
   async findOneGuardian(id: string, academyId: string) {
     const guardian = await this.prisma.familyGuardian.findUnique({
       where: { id },

@@ -66,6 +66,8 @@ export class StudentsResolver {
     @Args("search", { type: () => String, nullable: true }) search?: string,
     @Args("status", { type: () => Status, nullable: true })
     status?: Status,
+    @Args("classId", { type: () => String, nullable: true })
+    classId?: string,
   ) {
     return this.studentsService.findAll(
       user.academyId,
@@ -73,6 +75,7 @@ export class StudentsResolver {
       limit,
       search,
       status,
+      classId,
     );
   }
 

@@ -720,6 +720,7 @@ input CreateProgramInput {
 }
 
 input CreateStudentInput {
+  classIds: [String!]
   email: String!
   firstName: String!
   lastName: String!
@@ -728,6 +729,7 @@ input CreateStudentInput {
 
 input CreateTeacherInput {
   birthDate: DateTime
+  classIds: [String!]
   documentNumber: String
   documentType: DocumentType
   email: String
@@ -1512,13 +1514,13 @@ type Query {
   """Overview financiero de un alumno: facturas impagas/pagadas y totales"""
   studentInvoiceOverview(studentId: ID!): StudentInvoiceOverview!
   studentStats: StudentStats!
-  students(limit: Int = 10, page: Int = 1, search: String, status: Status): PaginatedStudents!
+  students(classId: String, limit: Int = 10, page: Int = 1, search: String, status: Status): PaginatedStudents!
 
   """Estudiantes con charges pendientes para facturación masiva (paginado)"""
   studentsForBulkInvoice(input: StudentsForBulkInvoiceInput!, limit: Int = 10, page: Int = 1): PaginatedStudentsForBulkInvoice!
   teacher(id: String!): Teacher!
   teacherStats: TeacherStats!
-  teachers(limit: Int!, page: Int!, search: String, status: Status): PaginatedTeachers!
+  teachers(classId: String, limit: Int!, page: Int!, search: String, status: Status): PaginatedTeachers!
   user(id: String!): User
   userBySupabaseId(supabaseUserId: String!): User
   users: [User!]!

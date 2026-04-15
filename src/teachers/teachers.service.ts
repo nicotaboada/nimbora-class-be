@@ -21,16 +21,31 @@ interface TeacherPagination {
 
 @Injectable()
 export class TeachersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(input: CreateTeacherInput, academyId: string): Promise<Teacher> {
+    const { classIds, email, phoneNumber, ...teacherData } = input;
+
     const teacher = await this.prisma.teacher.create({
       data: {
-        ...input,
+        ...teacherData,
         academyId,
+        contactInfo: {
+          create: {
+            email,
+            phoneNumber,
+          },
+        },
       },
       include: { contactInfo: true },
     });
+
+    if (classIds && classIds.length > 0) {
+      await this.prisma.class.updateMany({
+        where: { id: { in: classIds } },
+        data: { teacherId: teacher.id },
+      });
+    }
 
     return mapTeacherToEntity(teacher);
   }
@@ -41,11 +56,17 @@ export class TeachersService {
     academyId: string,
     search?: string,
     status?: Status,
+    classId?: string,
   ): Promise<TeacherPagination> {
     const skip = (page - 1) * limit;
 
     const where = {
       academyId,
+      ...(classId && {
+        classes: {
+          some: { id: classId },
+        },
+      }),
       ...(search && {
         OR: [
           { firstName: { contains: search, mode: "insensitive" } },

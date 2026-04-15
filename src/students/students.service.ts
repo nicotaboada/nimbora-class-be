@@ -20,13 +20,26 @@ export class StudentsService {
     academyId: string,
   ): Promise<Student> {
     try {
+      const { classIds, ...studentData } = createStudentInput;
+
       const student = await this.prisma.student.create({
         data: {
-          ...createStudentInput,
+          ...studentData,
           academyId,
           status: Status.ENABLED,
         },
       });
+
+      // Assign student to classes if classIds are provided
+      if (classIds && classIds.length > 0) {
+        await this.prisma.classStudent.createMany({
+          data: classIds.map((classId) => ({
+            classId,
+            studentId: student.id,
+          })),
+        });
+      }
+
       return mapStudentToEntity(student);
     } catch (error: unknown) {
       if (
@@ -55,6 +68,7 @@ export class StudentsService {
     limit = 10,
     search?: string,
     status?: Status,
+    classId?: string,
   ) {
     const validPage = Math.max(1, page);
     const validLimit = Math.min(Math.max(1, limit), 100);
@@ -63,18 +77,19 @@ export class StudentsService {
 
     const where: Prisma.StudentWhereInput = {
       academyId,
+      ...(classId && {
+        classStudents: {
+          some: { classId },
+        },
+      }),
+      ...(search && {
+        OR: [
+          { firstName: { contains: search, mode: "insensitive" } },
+          { lastName: { contains: search, mode: "insensitive" } },
+        ],
+      }),
+      ...(status && { status }),
     };
-
-    if (search) {
-      where.OR = [
-        { firstName: { contains: search, mode: "insensitive" } },
-        { lastName: { contains: search, mode: "insensitive" } },
-      ];
-    }
-
-    if (status) {
-      where.status = status;
-    }
 
     const [total, data] = await Promise.all([
       this.prisma.student.count({ where }),

@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsEmail,
   IsDate,
+  IsArray,
 } from "class-validator";
 import { Gender, DocumentType } from "../../common/enums";
 
@@ -47,4 +48,10 @@ export class CreateTeacherInput {
   @IsString({ message: "El número de documento debe ser texto" })
   @Field({ nullable: true })
   documentNumber?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true, message: "Cada ID de clase debe ser texto" })
+  @Field(() => [String], { nullable: true })
+  classIds?: string[];
 }

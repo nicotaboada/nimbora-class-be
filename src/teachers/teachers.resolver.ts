@@ -45,6 +45,8 @@ export class TeachersResolver {
     @Args("search", { type: () => String, nullable: true }) search?: string,
     @Args("status", { type: () => Status, nullable: true })
     status?: Status,
+    @Args("classId", { type: () => String, nullable: true })
+    classId?: string,
   ): Promise<any> {
     return this.teachersService.findAll(
       page,
@@ -52,6 +54,7 @@ export class TeachersResolver {
       user.academyId,
       search,
       status,
+      classId,
     );
   }
 

@@ -1,5 +1,11 @@
 import { InputType, Field } from "@nestjs/graphql";
-import { IsEmail, IsNotEmpty, IsOptional, IsString } from "class-validator";
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsArray,
+} from "class-validator";
 
 @InputType()
 export class CreateStudentInput {
@@ -22,4 +28,10 @@ export class CreateStudentInput {
   @IsOptional()
   @IsString()
   phoneNumber?: string;
+
+  @Field(() => [String], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true, message: "Cada ID de clase debe ser texto" })
+  classIds?: string[];
 }

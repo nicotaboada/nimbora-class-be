@@ -92,6 +92,7 @@ export class FamiliesService {
               relationship: true,
               avatarUrl: true,
               emailNotifications: true,
+              isResponsibleForBilling: true,
               email: true,
               phoneNumber: true,
             },
@@ -144,6 +145,7 @@ export class FamiliesService {
             relationship: true,
             avatarUrl: true,
             emailNotifications: true,
+            isResponsibleForBilling: true,
             email: true,
             phoneNumber: true,
           },
@@ -155,11 +157,15 @@ export class FamiliesService {
   }
 
   async createGuardian(input: CreateGuardianInput, academyId: string) {
+    let isResponsibleForBilling = false;
+
     if (input.familyId) {
       const family = await this.prisma.family.findUnique({
         where: { id: input.familyId },
+        include: { _count: { select: { guardians: true } } },
       });
       assertOwnership(family, academyId, "Family");
+      isResponsibleForBilling = family._count.guardians === 0;
     }
 
     const guardian = await this.prisma.familyGuardian.create({
@@ -171,6 +177,7 @@ export class FamiliesService {
         phoneNumber: input.phoneNumber || null,
         familyId: input.familyId || null,
         academyId,
+        isResponsibleForBilling,
       },
     });
 
@@ -395,6 +402,34 @@ export class FamiliesService {
     const updated = await this.prisma.familyGuardian.update({
       where: { id: input.guardianId },
       data: updateData,
+    });
+
+    return mapGuardianToEntity(updated, []);
+  }
+
+  async updateGuardianBilling(guardianId: string, academyId: string) {
+    const guardian = await this.prisma.familyGuardian.findUnique({
+      where: { id: guardianId },
+    });
+    assertOwnership(guardian, academyId, "Guardian");
+
+    if (!guardian.familyId) {
+      throw new BadRequestException("Guardian does not belong to a family");
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.familyGuardian.updateMany({
+        where: { familyId: guardian.familyId },
+        data: { isResponsibleForBilling: false },
+      }),
+      this.prisma.familyGuardian.update({
+        where: { id: guardianId },
+        data: { isResponsibleForBilling: true },
+      }),
+    ]);
+
+    const updated = await this.prisma.familyGuardian.findUnique({
+      where: { id: guardianId },
     });
 
     return mapGuardianToEntity(updated, []);

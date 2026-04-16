@@ -21,6 +21,9 @@ export class FamilyGuardianSummary {
   @Field()
   emailNotifications: boolean;
 
+  @Field()
+  isResponsibleForBilling: boolean;
+
   @Field({ nullable: true })
   email?: string;
 

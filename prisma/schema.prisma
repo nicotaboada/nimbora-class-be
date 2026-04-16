@@ -245,6 +245,7 @@ model Family {
 
   guardians FamilyGuardian[]
   students  Student[]
+  invoices  Invoice[]
 
   @@index([academyId])
   // NOTA: Agregar GIN index manualmente en migration SQL:
@@ -279,9 +280,10 @@ model FamilyGuardian {
   postalCode       String?
 
   // Preferencias
-  emailNotifications Boolean @default(true)
-  status             Status  @default(ENABLED)
-  avatarUrl          String?
+  emailNotifications      Boolean @default(true)
+  isResponsibleForBilling Boolean @default(false)
+  status                  Status  @default(ENABLED)
+  avatarUrl               String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -451,9 +453,11 @@ model Invoice {
   id               String        @id @default(uuid())
   invoiceNumber    Int           @default(autoincrement())
 
-  // Recipient (studentId nullable para "OTHER")
+  // Recipient (studentId nullable para "OTHER" o familias)
   studentId        String?
   student          Student?      @relation(fields: [studentId], references: [id])
+  familyId         String?
+  family           Family?       @relation(fields: [familyId], references: [id])
   recipientName    String        // Siempre requerido (snapshot o manual)
   recipientEmail   String?
   recipientPhone   String?
@@ -493,6 +497,7 @@ model Invoice {
   afip             AfipInvoice?
 
   @@index([studentId])
+  @@index([familyId])
   @@index([academyId])
   @@index([status])
 }
@@ -820,6 +825,7 @@ model AfipInvoice {
 enum BulkOperationType {
   BULK_INVOICE
   BULK_AFIP
+  BULK_FAMILY_INVOICE
 }
 
 enum BulkOperationStatus {

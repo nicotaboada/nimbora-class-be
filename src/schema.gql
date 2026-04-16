@@ -378,6 +378,12 @@ input BulkCreateAfipInvoicesInput {
   ptoVta: Int!
 }
 
+input BulkCreateFamilyInvoicesInput {
+  dueDate: DateTime!
+  items: [BulkFamilyInvoiceItemInput!]!
+  notify: Boolean! = false
+}
+
 input BulkCreateInvoicesInput {
   """Fecha de vencimiento para todas las facturas"""
   dueDate: DateTime!
@@ -387,6 +393,21 @@ input BulkCreateInvoicesInput {
 
   """Enviar notificación a los estudiantes al crear las facturas"""
   notify: Boolean! = false
+}
+
+input BulkFamilyInvoiceItemInput {
+  familyId: String!
+  students: [FamilyInvoiceStudentItemInput!]!
+}
+
+type BulkFamilyOperationResult {
+  error: String
+  familyId: String!
+  familyName: String!
+  invoiceId: String
+  status: String!
+  studentCount: Int
+  totalLines: Int
 }
 
 input BulkInvoiceItemInput {
@@ -408,6 +429,9 @@ type BulkOperation {
 
   """Items que fallaron"""
   failedItems: Int!
+
+  """Resultados de facturación familiar"""
+  familyResults: [BulkFamilyOperationResult!]
   id: String!
 
   """Resultados de facturación interna"""
@@ -452,6 +476,7 @@ enum BulkOperationStatus {
 """Tipo de operación bulk"""
 enum BulkOperationType {
   BULK_AFIP
+  BULK_FAMILY_INVOICE
   BULK_INVOICE
 }
 
@@ -793,15 +818,29 @@ type Family {
   tags: [String!]!
 }
 
+type FamilyBulkInvoicePreview {
+  familyId: String!
+  familyName: String!
+  studentCount: Int!
+  students: [StudentBulkInvoiceInFamily!]!
+  totalAmount: Float!
+}
+
 type FamilyGuardianSummary {
   avatarUrl: String
   email: String
   emailNotifications: Boolean!
   firstName: String!
   id: String!
+  isResponsibleForBilling: Boolean!
   lastName: String!
   phoneNumber: String
   relationship: GuardianRelationship!
+}
+
+input FamilyInvoiceStudentItemInput {
+  chargeIds: [String!]!
+  studentId: String!
 }
 
 type FamilyStudentSummary {
@@ -885,6 +924,7 @@ type Guardian {
   gender: Gender
   id: String!
   isActive: Boolean!
+  isResponsibleForBilling: Boolean!
   lastName: String!
   phoneCountryCode: String
   phoneNumber: String
@@ -916,6 +956,10 @@ type Invoice {
 
   """Fecha de vencimiento"""
   dueDate: DateTime!
+  family: Family
+
+  """ID de la familia (null si no es familia)"""
+  familyId: String
   id: String!
 
   """Número de factura secuencial"""
@@ -945,6 +989,7 @@ type Invoice {
   recipientName: String!
   recipientPhone: String
   status: InvoiceStatus!
+  student: Student
 
   """ID del estudiante (null si es OTHER)"""
   studentId: String
@@ -1108,6 +1153,11 @@ type Mutation {
   bulkCreateAfipInvoices(input: BulkCreateAfipInvoicesInput!): BulkOperation!
 
   """
+  Genera facturas familiares en bulk. Una factura por familia con los cargos de todos sus estudiantes.
+  """
+  bulkCreateFamilyInvoices(input: BulkCreateFamilyInvoicesInput!): BulkOperation!
+
+  """
   Genera facturas en bulk. Retorna el operationId para polling de estado.
   """
   bulkCreateInvoices(input: BulkCreateInvoicesInput!): BulkOperation!
@@ -1185,6 +1235,7 @@ type Mutation {
   ): AfipSalesPoint!
   updateClass(updateClassInput: UpdateClassInput!): Class!
   updateGuardian(updateGuardianInput: UpdateGuardianInput!): Guardian!
+  updateGuardianBilling(input: UpdateGuardianBillingInput!): Guardian!
   updateGuardianContactInfo(input: UpdateGuardianContactInfoInput!): Guardian!
   updateGuardianNotifications(input: UpdateGuardianNotificationsInput!): Guardian!
   updateGuardianPersonalInfo(input: UpdateGuardianPersonalInfoInput!): Guardian!
@@ -1243,6 +1294,14 @@ type PaginatedClasses {
 type PaginatedFamilies {
   """Lista de items"""
   data: [Family!]!
+
+  """Metadata de paginación"""
+  meta: PaginationMeta!
+}
+
+type PaginatedFamiliesForBulkInvoice {
+  """Lista de items"""
+  data: [FamilyBulkInvoicePreview!]!
 
   """Metadata de paginación"""
   meta: PaginationMeta!
@@ -1450,6 +1509,9 @@ type Query {
   classes(filter: ClassesFilterInput): PaginatedClasses!
   classesByStudent(studentId: String!): [Class!]!
   families(limit: Int = 10, page: Int = 1, search: String): PaginatedFamilies!
+
+  """Familias con charges pendientes para facturación masiva (paginado)"""
+  familiesForBulkInvoice(input: StudentsForBulkInvoiceInput!, limit: Int = 10, page: Int = 1): PaginatedFamiliesForBulkInvoice!
   family(id: String!): Family!
   familyStudents(familyId: String!, limit: Int = 10, page: Int = 1, search: String): PaginatedStudents!
 
@@ -1575,6 +1637,15 @@ type Student {
   state: String
   status: Status!
   updatedAt: DateTime!
+}
+
+type StudentBulkInvoiceInFamily {
+  chargeCount: Int!
+  chargeIds: [String!]!
+  firstName: String!
+  lastName: String!
+  studentId: String!
+  totalAmount: Float!
 }
 
 type StudentBulkInvoicePreview {
@@ -1862,6 +1933,10 @@ input UpdateContactInfoInput {
   postalCode: String
   state: String
   teacherId: String!
+}
+
+input UpdateGuardianBillingInput {
+  guardianId: String!
 }
 
 input UpdateGuardianContactInfoInput {

@@ -24,6 +24,7 @@ interface FamilyWithRelations extends PrismaFamily {
     relationship: string;
     avatarUrl: string | null;
     emailNotifications: boolean;
+    isResponsibleForBilling: boolean;
     email: string | null;
     phoneNumber: string | null;
   }>;
@@ -48,6 +49,7 @@ export function mapFamilyToEntity(prismaFamily: FamilyWithRelations): Family {
     relationship: g.relationship as GuardianRelationship,
     avatarUrl: g.avatarUrl || undefined,
     emailNotifications: g.emailNotifications,
+    isResponsibleForBilling: g.isResponsibleForBilling,
     email: g.email || undefined,
     phoneNumber: g.phoneNumber || undefined,
   }));

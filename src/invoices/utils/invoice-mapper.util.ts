@@ -1,25 +1,37 @@
-import { Prisma } from "@prisma/client";
+import {
+  Prisma,
+  Invoice as PrismaInvoice,
+  InvoiceLine as PrismaInvoiceLine,
+  Student as PrismaStudent,
+  Family as PrismaFamily,
+  FamilyGuardian as PrismaGuardian,
+  ClassStudent as PrismaClassStudent,
+  Class as PrismaClass,
+  Payment as PrismaPayment,
+} from "@prisma/client";
 import { Invoice } from "../entities/invoice.entity";
 import { InvoiceLine } from "../entities/invoice-line.entity";
-import { Payment } from "../../payments/entities/payment.entity";
+import { mapStudentToEntity } from "../../students/utils/student-mapper.util";
+import { mapFamilyToEntity } from "../../families/utils/family-mapper.util";
 
-type PrismaInvoiceWithLines = Prisma.InvoiceGetPayload<{
-  include: { lines: true };
-}>;
+type MappableFamily = PrismaFamily & {
+  students: Array<
+    PrismaStudent & {
+      classStudents: Array<PrismaClassStudent & { class: PrismaClass }>;
+    }
+  >;
+  guardians: PrismaGuardian[];
+};
 
-type PrismaInvoiceWithLinesAndPayments = Prisma.InvoiceGetPayload<{
-  include: { lines: true; payments: true };
-}>;
+type MappableInvoice = PrismaInvoice & {
+  lines: PrismaInvoiceLine[];
+  student?: PrismaStudent | null;
+  family?: MappableFamily | null;
+  payments?: PrismaPayment[];
+};
 
-/**
- * Maps a Prisma Invoice (with lines) to the Invoice entity.
- * @param invoice The invoice object from Prisma with lines included
- * @returns The mapped Invoice entity
- */
-export function mapInvoiceToEntity(
-  invoice: PrismaInvoiceWithLines | PrismaInvoiceWithLinesAndPayments,
-): Invoice {
-  const activeLines = [...invoice.lines]
+export function mapInvoiceToEntity(invoice: MappableInvoice): Invoice {
+  const activeLines = [...(invoice.lines ?? [])]
     .filter((l) => l.isActive)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
@@ -44,11 +56,13 @@ export function mapInvoiceToEntity(
     lines: activeLines.map((line) => mapInvoiceLineToEntity(line)),
     createdAt: invoice.createdAt,
     updatedAt: invoice.updatedAt,
+    student: invoice.student ? mapStudentToEntity(invoice.student) : undefined,
+    familyId: invoice.familyId ?? undefined,
+    family: invoice.family ? mapFamilyToEntity(invoice.family) : undefined,
   };
 
-  // Si incluye payments, agregarlos
-  if ("payments" in invoice && invoice.payments) {
-    result.payments = invoice.payments as Payment[];
+  if (invoice.payments && invoice.payments.length > 0) {
+    result.payments = invoice.payments;
   }
 
   return result;

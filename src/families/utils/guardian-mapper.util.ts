@@ -40,6 +40,7 @@ export function mapGuardianToEntity(
     familyId: prismaGuardian.familyId || undefined,
     academyId: prismaGuardian.academyId,
     emailNotifications: prismaGuardian.emailNotifications,
+    isResponsibleForBilling: prismaGuardian.isResponsibleForBilling,
     isActive: statusMap[prismaGuardian.status] === Status.ENABLED,
     students,
     avatarUrl: prismaGuardian.avatarUrl ?? undefined,

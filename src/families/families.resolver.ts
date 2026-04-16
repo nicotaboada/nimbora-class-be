@@ -10,6 +10,7 @@ import { UpdateGuardianInput } from "./dto/update-guardian.input";
 import { UpdateGuardianNotificationsInput } from "./dto/update-guardian-notifications.input";
 import { UpdateGuardianPersonalInfoInput } from "./dto/update-guardian-personal-info.input";
 import { UpdateGuardianContactInfoInput } from "./dto/update-guardian-contact-info.input";
+import { UpdateGuardianBillingInput } from "./dto/update-guardian-billing.input";
 import { SetFamilyStudentsInput } from "./dto/add-students-to-family.input";
 import { AvailableStudentsForFamilyInput } from "./dto/available-students-for-family.input";
 import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
@@ -157,6 +158,17 @@ export class FamiliesResolver {
   ) {
     return this.familiesService.updateGuardianContactInfo(
       input,
+      user.academyId,
+    );
+  }
+
+  @Mutation(() => Guardian)
+  async updateGuardianBilling(
+    @Args("input") input: UpdateGuardianBillingInput,
+    @CurrentUser() user: User,
+  ) {
+    return this.familiesService.updateGuardianBilling(
+      input.guardianId,
       user.academyId,
     );
   }

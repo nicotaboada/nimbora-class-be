@@ -7,10 +7,13 @@ import { tasks } from "@trigger.dev/sdk";
 import { PrismaService } from "../prisma/prisma.service";
 import { BulkCreateInvoicesInput } from "./dto/bulk-create-invoices.input";
 import { BulkCreateAfipInvoicesInput } from "./dto/bulk-create-afip-invoices.input";
-import { StudentsForBulkInvoiceInput } from "./dto/students-for-bulk-invoice.input";
+import { BulkCreateFamilyInvoicesInput } from "./dto/bulk-create-family-invoices.input";
+import { BulkInvoiceFilterInput } from "./dto/bulk-invoice-filter.input";
 import { InvoicesForBulkAfipInput } from "./dto/invoices-for-bulk-afip.input";
 import { BulkOperation } from "./entities/bulk-operation.entity";
 import { BulkOperationResult } from "./entities/bulk-operation-result.entity";
+import { BulkAfipResult } from "./entities/bulk-afip-result.entity";
+import { BulkFamilyOperationResult } from "./entities/bulk-family-operation-result.entity";
 import { StudentBulkInvoicePreview } from "./entities/student-bulk-invoice-preview.entity";
 import { InvoiceBulkAfipPreview } from "./entities/invoice-bulk-afip-preview.entity";
 import {
@@ -19,6 +22,8 @@ import {
 } from "./entities/afip-bulk-summary.entity";
 import { PaginatedStudentsForBulkInvoice } from "./dto/paginated-students-for-bulk-invoice.output";
 import { PaginatedInvoicesForBulkAfip } from "./dto/paginated-invoices-for-bulk-afip.output";
+import { FamilyBulkInvoicePreview } from "./entities/family-bulk-invoice-preview.entity";
+import { PaginatedFamiliesForBulkInvoice } from "./dto/paginated-families-for-bulk-invoice.output";
 import { BulkOperationType } from "./enums/bulk-operation-type.enum";
 import { BulkOperationStatus } from "./enums/bulk-operation-status.enum";
 import {
@@ -26,6 +31,7 @@ import {
   InvoiceStatus,
   Prisma,
   BillingTaxCondition,
+  BulkOperationType as PrismaBulkOperationType,
 } from "@prisma/client";
 import {
   resolveCbteTipo,
@@ -35,6 +41,7 @@ import { AfipSettingsService } from "../afip/afip-settings.service";
 import { FeatureFlagsService } from "../feature-flags/feature-flags.service";
 import type { bulkCreateInvoicesTask } from "../trigger/bulk-create-invoices";
 import type { bulkCreateAfipInvoicesTask } from "../trigger/bulk-create-afip-invoices";
+import type { bulkCreateFamilyInvoicesTask } from "../trigger/bulk-create-family-invoices";
 
 @Injectable()
 export class BulkOperationsService {
@@ -65,9 +72,13 @@ export class BulkOperationsService {
         status: BulkOperationStatus.PENDING,
         academyId,
         totalItems: items.length,
-        params: JSON.parse(
-          JSON.stringify({ items, dueDate: dueDate.toISOString() }),
-        ),
+        params: {
+          items: items.map((i) => ({
+            studentId: i.studentId,
+            chargeIds: i.chargeIds,
+          })),
+          dueDate: dueDate.toISOString(),
+        },
         results: [],
       },
     });
@@ -79,6 +90,73 @@ export class BulkOperationsService {
         items: items.map((item) => ({
           studentId: item.studentId,
           chargeIds: item.chargeIds,
+        })),
+        dueDate: dueDate.toISOString(),
+        academyId,
+        notify,
+      },
+    );
+
+    await this.prisma.bulkOperation.update({
+      where: { id: operation.id },
+      data: { triggerRunId: handle.id },
+    });
+
+    return this.mapToEntity(operation);
+  }
+
+  /**
+   * Valida el input, crea un BulkOperation en PENDING para facturas familiares, y dispara el task.
+   */
+  async bulkCreateFamilyInvoices(
+    input: BulkCreateFamilyInvoicesInput,
+    academyId: string,
+  ): Promise<BulkOperation> {
+    const { items, dueDate, notify } = input;
+
+    const familyIds = items.map((item) => item.familyId);
+    const flatItems = items.flatMap((fi) =>
+      fi.students.map((s) => ({
+        studentId: s.studentId,
+        chargeIds: s.chargeIds,
+      })),
+    );
+    const allChargeIds = flatItems.flatMap((item) => item.chargeIds);
+
+    await this.validateFamiliesOwnership(familyIds, academyId);
+    await this.validateStudentFamilyMembership(items, academyId);
+    await this.validateChargesAvailability(allChargeIds, flatItems);
+
+    const operation = await this.prisma.bulkOperation.create({
+      data: {
+        type: BulkOperationType.BULK_FAMILY_INVOICE,
+        status: BulkOperationStatus.PENDING,
+        academyId,
+        totalItems: items.length,
+        params: {
+          items: items.map((fi) => ({
+            familyId: fi.familyId,
+            students: fi.students.map((s) => ({
+              studentId: s.studentId,
+              chargeIds: s.chargeIds,
+            })),
+          })),
+          dueDate: dueDate.toISOString(),
+        },
+        results: [],
+      },
+    });
+
+    const handle = await tasks.trigger<typeof bulkCreateFamilyInvoicesTask>(
+      "bulk-create-family-invoices",
+      {
+        operationId: operation.id,
+        items: items.map((item) => ({
+          familyId: item.familyId,
+          students: item.students.map((s) => ({
+            studentId: s.studentId,
+            chargeIds: s.chargeIds,
+          })),
         })),
         dueDate: dueDate.toISOString(),
         academyId,
@@ -121,7 +199,7 @@ export class BulkOperationsService {
    * Solo incluye estudiantes que tengan al menos 1 charge PENDING que matchee.
    */
   async findStudentsForBulkInvoice(
-    input: StudentsForBulkInvoiceInput,
+    input: BulkInvoiceFilterInput,
     academyId: string,
     pageInput = 1,
     limitInput = 10,
@@ -174,6 +252,108 @@ export class BulkOperationsService {
       totalAmount: student.charges.reduce((sum, c) => sum + c.amount, 0),
       chargeIds: student.charges.map((c) => c.id),
     }));
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      },
+    };
+  }
+
+  /**
+   * Retorna familias paginadas con sus estudiantes que tengan charges PENDING para un periodo.
+   * Solo incluye familias que tengan al menos 1 estudiante con al menos 1 charge PENDING que matchee.
+   */
+  async findFamiliesForBulkInvoice(
+    input: BulkInvoiceFilterInput,
+    academyId: string,
+    pageInput = 1,
+    limitInput = 10,
+  ): Promise<PaginatedFamiliesForBulkInvoice> {
+    const { period, includePastDue, search } = input;
+    const page = Math.max(1, pageInput);
+    const limit = Math.min(Math.max(1, limitInput), 100);
+    const skip = (page - 1) * limit;
+
+    const chargesFilter: Prisma.ChargeWhereInput = {
+      status: ChargeStatus.PENDING,
+      periodMonth: includePastDue ? { lte: period } : period,
+    };
+
+    const familyWhere: Prisma.FamilyWhereInput = {
+      academyId,
+      students: { some: { charges: { some: chargesFilter } } },
+    };
+
+    if (search) {
+      familyWhere.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        {
+          students: {
+            some: { firstName: { contains: search, mode: "insensitive" } },
+          },
+        },
+        {
+          students: {
+            some: { lastName: { contains: search, mode: "insensitive" } },
+          },
+        },
+        {
+          students: {
+            some: { email: { contains: search, mode: "insensitive" } },
+          },
+        },
+      ];
+    }
+
+    const [total, families] = await Promise.all([
+      this.prisma.family.count({ where: familyWhere }),
+      this.prisma.family.findMany({
+        where: familyWhere,
+        include: {
+          students: {
+            where: { charges: { some: chargesFilter } },
+            include: {
+              charges: {
+                where: chargesFilter,
+                select: { id: true, amount: true },
+              },
+            },
+            orderBy: { firstName: "asc" },
+          },
+        },
+        orderBy: { name: "asc" },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    const data: FamilyBulkInvoicePreview[] = families.map((family) => {
+      const students = family.students.map((student) => ({
+        studentId: student.id,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        chargeCount: student.charges.length,
+        totalAmount: student.charges.reduce((sum, c) => sum + c.amount, 0),
+        chargeIds: student.charges.map((c) => c.id),
+      }));
+
+      return {
+        familyId: family.id,
+        familyName: family.name,
+        studentCount: students.length,
+        totalAmount: students.reduce((sum, s) => sum + s.totalAmount, 0),
+        students,
+      };
+    });
 
     const totalPages = Math.ceil(total / limit);
 
@@ -376,13 +556,11 @@ export class BulkOperationsService {
         status: BulkOperationStatus.PENDING,
         academyId,
         totalItems: invoiceIds.length,
-        params: JSON.parse(
-          JSON.stringify({
-            invoiceIds,
-            ptoVta,
-            cbteFch: cbteFch.toISOString(),
-          }),
-        ),
+        params: {
+          invoiceIds,
+          ptoVta,
+          cbteFch: cbteFch.toISOString(),
+        },
         results: [],
       },
     });
@@ -436,6 +614,78 @@ export class BulkOperationsService {
   }
 
   /**
+   * Valida que todas las families pertenezcan a la academy y no haya duplicados.
+   */
+  private async validateFamiliesOwnership(
+    familyIds: string[],
+    academyId: string,
+  ): Promise<void> {
+    const uniqueIds = [...new Set(familyIds)];
+
+    if (uniqueIds.length !== familyIds.length) {
+      throw new BadRequestException("Hay familias duplicadas en la lista");
+    }
+
+    const families = await this.prisma.family.findMany({
+      where: { id: { in: uniqueIds }, academyId },
+      select: { id: true },
+    });
+
+    if (families.length !== uniqueIds.length) {
+      const foundIds = new Set(families.map((f) => f.id));
+      const missing = uniqueIds.filter((id) => !foundIds.has(id));
+      throw new BadRequestException(
+        `Familias no encontradas o no pertenecen a la academia: ${missing.join(", ")}`,
+      );
+    }
+  }
+
+  /**
+   * Valida que cada studentId en los items pertenece a su correspondiente familyId.
+   */
+  private async validateStudentFamilyMembership(
+    items: {
+      familyId: string;
+      students: { studentId: string; chargeIds: string[] }[];
+    }[],
+    academyId: string,
+  ): Promise<void> {
+    // Recolectar todos los pares (familyId, studentId)
+    const pairs = items.flatMap((fi) =>
+      fi.students.map((s) => ({
+        familyId: fi.familyId,
+        studentId: s.studentId,
+      })),
+    );
+
+    // Obtener todos los estudiantes con sus familyIds
+    const studentIds = [...new Set(pairs.map((p) => p.studentId))];
+    const students = await this.prisma.student.findMany({
+      where: { id: { in: studentIds }, academyId },
+      select: { id: true, familyId: true },
+    });
+
+    const studentMap = new Map(students.map((s) => [s.id, s.familyId]));
+
+    // Validar cada par
+    for (const { familyId, studentId } of pairs) {
+      const studentFamilyId = studentMap.get(studentId);
+
+      if (!studentFamilyId) {
+        throw new BadRequestException(
+          `Estudiante ${studentId} no existe o no pertenece a la academia`,
+        );
+      }
+
+      if (studentFamilyId !== familyId) {
+        throw new BadRequestException(
+          `Estudiante ${studentId} no pertenece a la familia ${familyId}`,
+        );
+      }
+    }
+  }
+
+  /**
    * Valida que todos los charges existan, esten PENDING, y pertenezcan al student correcto.
    */
   private async validateChargesAvailability(
@@ -482,20 +732,13 @@ export class BulkOperationsService {
     }
   }
 
-  private mapToEntity(operation: {
-    id: string;
-    type: string;
-    status: string;
-    totalItems: number;
-    completedItems: number;
-    failedItems: number;
-    skippedItems: number;
-    results: unknown;
-    startedAt: Date | null;
-    completedAt: Date | null;
-    createdAt: Date;
-  }): BulkOperation {
-    const isAfip = operation.type === BulkOperationType.BULK_AFIP;
+  private mapToEntity(
+    operation: Prisma.BulkOperationGetPayload<object>,
+  ): BulkOperation {
+    const isAfip = operation.type === PrismaBulkOperationType.BULK_AFIP;
+    const isFamily =
+      operation.type === PrismaBulkOperationType.BULK_FAMILY_INVOICE;
+    const results = (operation.results ?? []) as unknown;
 
     return {
       id: operation.id,
@@ -505,10 +748,9 @@ export class BulkOperationsService {
       completedItems: operation.completedItems,
       failedItems: operation.failedItems,
       skippedItems: operation.skippedItems,
-      results: isAfip
-        ? []
-        : ((operation.results as BulkOperationResult[]) ?? []),
-      afipResults: isAfip ? ((operation.results as any[]) ?? []) : [],
+      results: isAfip || isFamily ? [] : (results as BulkOperationResult[]),
+      afipResults: isAfip ? (results as BulkAfipResult[]) : [],
+      familyResults: isFamily ? (results as BulkFamilyOperationResult[]) : [],
       startedAt: operation.startedAt ?? undefined,
       completedAt: operation.completedAt ?? undefined,
       createdAt: operation.createdAt,

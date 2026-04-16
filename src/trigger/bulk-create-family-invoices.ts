@@ -13,38 +13,38 @@ import {
   NotificationRecipient,
 } from "../invoices/utils/resolve-notification-recipients.util";
 import {
-  BulkInvoiceItem,
-  BulkInvoiceResult,
+  BulkFamilyInvoiceItem,
+  BulkFamilyInvoiceResult,
 } from "../bulk-operations/types/bulk-invoice.types";
 import { runBulkOperation } from "./utils/run-bulk-operation.util";
 
 const prisma = new PrismaClient();
 
-interface BulkCreateInvoicesPayload {
+interface BulkCreateFamilyInvoicesPayload {
   operationId: string;
-  items: BulkInvoiceItem[];
+  items: BulkFamilyInvoiceItem[];
   dueDate: string;
   academyId: string;
   notify: boolean;
 }
 
-export const bulkCreateInvoicesTask = task({
-  id: "bulk-create-invoices",
+export const bulkCreateFamilyInvoicesTask = task({
+  id: "bulk-create-family-invoices",
   retry: { maxAttempts: 1 },
-  run: async (payload: BulkCreateInvoicesPayload) => {
+  run: async (payload: BulkCreateFamilyInvoicesPayload) => {
     const { operationId, items, dueDate, academyId, notify } = payload;
     const issueDate = new Date();
     const dueDateValue = new Date(dueDate);
 
     const academyName = notify ? await loadAcademyName(academyId) : "Academia";
 
-    return runBulkOperation<BulkInvoiceItem, BulkInvoiceResult>({
+    return runBulkOperation<BulkFamilyInvoiceItem, BulkFamilyInvoiceResult>({
       prisma,
       operationId,
       items,
-      logLabel: "bulk-create-invoices",
+      logLabel: "bulk-create-family-invoices",
       processItem: (item) =>
-        processStudentInvoice({
+        processFamilyInvoice({
           item,
           academyId,
           issueDate,
@@ -53,8 +53,8 @@ export const bulkCreateInvoicesTask = task({
           academyName,
         }),
       buildFailureResult: (item, error) => ({
-        studentId: item.studentId,
-        studentName: "Unknown",
+        familyId: item.familyId,
+        familyName: "Unknown",
         status: "failed",
         error,
       }),
@@ -71,7 +71,7 @@ async function loadAcademyName(academyId: string): Promise<string> {
 }
 
 interface ProcessArgs {
-  item: BulkInvoiceItem;
+  item: BulkFamilyInvoiceItem;
   academyId: string;
   issueDate: Date;
   dueDate: Date;
@@ -80,94 +80,68 @@ interface ProcessArgs {
 }
 
 /**
- * Procesa un estudiante: busca sus charges, crea la invoice con líneas, y marca
- * los charges como INVOICED dentro de una transacción.
+ * Procesa una familia: agrupa los charges PENDING de los estudiantes incluidos
+ * en una única factura familiar y los marca como INVOICED dentro de una transacción.
  */
-async function processStudentInvoice(
+async function processFamilyInvoice(
   args: ProcessArgs,
-): Promise<BulkInvoiceResult> {
+): Promise<BulkFamilyInvoiceResult> {
   const { item, academyId, issueDate, dueDate, notify, academyName } = args;
 
-  const student = await prisma.student.findUnique({
-    where: { id: item.studentId },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      phoneNumber: true,
-      family: {
+  const family = await prisma.family.findUnique({
+    where: { id: item.familyId },
+    include: {
+      guardians: {
         select: {
-          guardians: {
-            select: {
-              firstName: true,
-              lastName: true,
-              email: true,
-              phoneNumber: true,
-              address: true,
-              emailNotifications: true,
-              isResponsibleForBilling: true,
-            },
-          },
+          firstName: true,
+          lastName: true,
+          email: true,
+          phoneNumber: true,
+          address: true,
+          emailNotifications: true,
+          isResponsibleForBilling: true,
         },
       },
     },
   });
 
-  if (!student) {
+  if (!family) {
     return {
-      studentId: item.studentId,
-      studentName: "Unknown",
+      familyId: item.familyId,
+      familyName: "Unknown",
       status: "failed",
-      error: "Estudiante no encontrado",
+      error: "Familia no encontrada",
     };
   }
 
-  const studentName = `${student.firstName} ${student.lastName}`;
-
-  // Recipient: guardián responsable de billing > primer guardián > el alumno
-  const guardian =
-    student.family?.guardians.find((g) => g.isResponsibleForBilling) ??
-    student.family?.guardians[0] ??
-    null;
-
-  const recipientName = guardian
-    ? `${guardian.firstName} ${guardian.lastName}`
-    : studentName;
-  const recipientEmail = guardian?.email ?? student.email;
-  const recipientPhone = guardian?.phoneNumber ?? student.phoneNumber;
-
-  const charges = await prisma.charge.findMany({
-    where: { id: { in: item.chargeIds }, status: ChargeStatus.PENDING },
-    include: { fee: true },
+  const allCharges = await prisma.charge.findMany({
+    where: {
+      studentId: { in: item.students.map((s) => s.studentId) },
+      id: { in: item.students.flatMap((s) => s.chargeIds) },
+      status: ChargeStatus.PENDING,
+    },
+    include: {
+      fee: true,
+      student: { select: { id: true, firstName: true, lastName: true } },
+    },
   });
 
-  if (charges.length === 0) {
+  if (allCharges.length === 0) {
     return {
-      studentId: student.id,
-      studentName,
+      familyId: family.id,
+      familyName: family.name,
       status: "skipped",
       error: "No hay charges pendientes disponibles",
     };
   }
 
-  const invalidCharges = charges.filter((c) => c.studentId !== student.id);
-  if (invalidCharges.length > 0) {
-    return {
-      studentId: student.id,
-      studentName,
-      status: "failed",
-      error: `Charges no pertenecen al estudiante: ${invalidCharges.map((c) => c.id).join(", ")}`,
-    };
-  }
-
-  const lines = charges.map(
+  const lines = allCharges.map(
     (charge): LineDataToCreate => ({
       type: InvoiceLineType.CHARGE,
       chargeId: charge.id,
       description: charge.periodMonth
-        ? `${charge.fee.description} — Cuota ${charge.periodMonth}`
-        : charge.fee.description,
+        ? `${charge.fee.description} — Cuota ${charge.periodMonth} (${charge.student.firstName} ${charge.student.lastName})`
+        : `${charge.fee.description} (${charge.student.firstName} ${charge.student.lastName})`,
       originalAmount: charge.amount,
       discountType: null,
       discountValue: null,
@@ -180,14 +154,24 @@ async function processStudentInvoice(
   const subtotal = lines.reduce((sum, l) => sum + l.originalAmount, 0);
   const total = lines.reduce((sum, l) => sum + l.finalAmount, 0);
 
+  // Recipient: guardián marcado como responsable de billing > primer guardián
+  const primaryGuardian =
+    family.guardians.find((g) => g.isResponsibleForBilling) ??
+    family.guardians[0];
+
+  const recipientName = primaryGuardian
+    ? `${primaryGuardian.firstName} ${primaryGuardian.lastName}`
+    : family.name;
+
   const invoice = await prisma.$transaction(async (tx) => {
     const created = await tx.invoice.create({
       data: {
-        studentId: student.id,
+        familyId: family.id,
         academyId,
         recipientName,
-        recipientEmail,
-        recipientPhone,
+        recipientEmail: primaryGuardian?.email ?? null,
+        recipientPhone: primaryGuardian?.phoneNumber ?? null,
+        recipientAddress: primaryGuardian?.address ?? null,
         issueDate,
         dueDate,
         status: InvoiceStatus.ISSUED,
@@ -200,25 +184,20 @@ async function processStudentInvoice(
       },
     });
     await tx.charge.updateMany({
-      where: { id: { in: item.chargeIds } },
+      where: { id: { in: allCharges.map((c) => c.id) } },
       data: { status: ChargeStatus.INVOICED },
     });
     return created;
   });
 
   if (notify) {
-    const recipients = student.family
-      ? mapGuardiansToRecipients(student.family.guardians)
-      : student.email
-        ? [{ email: student.email, name: studentName }]
-        : [];
-
-    await sendInvoiceNotifications({
-      recipients,
+    await sendFamilyInvoiceNotifications({
+      recipients: mapGuardiansToRecipients(family.guardians),
+      familyId: family.id,
       invoiceNumber: invoice.invoiceNumber,
       recipientName,
-      recipientEmail,
-      recipientPhone,
+      recipientEmail: primaryGuardian?.email ?? null,
+      recipientPhone: primaryGuardian?.phoneNumber ?? null,
       issueDate,
       dueDate,
       subtotal,
@@ -229,15 +208,18 @@ async function processStudentInvoice(
   }
 
   return {
-    studentId: student.id,
-    studentName,
+    familyId: family.id,
+    familyName: family.name,
     status: "created",
     invoiceId: invoice.id,
+    studentCount: new Set(allCharges.map((c) => c.studentId)).size,
+    totalLines: lines.length,
   };
 }
 
 interface NotifyArgs {
   recipients: NotificationRecipient[];
+  familyId: string;
   invoiceNumber: number;
   recipientName: string;
   recipientEmail: string | null;
@@ -250,7 +232,7 @@ interface NotifyArgs {
   academyName: string;
 }
 
-async function sendInvoiceNotifications(args: NotifyArgs): Promise<void> {
+async function sendFamilyInvoiceNotifications(args: NotifyArgs): Promise<void> {
   if (args.recipients.length === 0) return;
 
   try {
@@ -294,6 +276,9 @@ async function sendInvoiceNotifications(args: NotifyArgs): Promise<void> {
       }
     }
   } catch (error) {
-    logger.warn(`Failed to process invoice notifications`, { error });
+    logger.warn(
+      `Failed to process invoice notifications for family ${args.familyId}`,
+      { error },
+    );
   }
 }

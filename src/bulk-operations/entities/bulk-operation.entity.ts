@@ -3,6 +3,7 @@ import { BulkOperationType } from "../enums/bulk-operation-type.enum";
 import { BulkOperationStatus } from "../enums/bulk-operation-status.enum";
 import { BulkOperationResult } from "./bulk-operation-result.entity";
 import { BulkAfipResult } from "./bulk-afip-result.entity";
+import { BulkFamilyOperationResult } from "./bulk-family-operation-result.entity";
 
 @ObjectType()
 export class BulkOperation {
@@ -38,6 +39,12 @@ export class BulkOperation {
     description: "Resultados de emisión AFIP",
   })
   afipResults?: BulkAfipResult[];
+
+  @Field(() => [BulkFamilyOperationResult], {
+    nullable: true,
+    description: "Resultados de facturación familiar",
+  })
+  familyResults?: BulkFamilyOperationResult[];
 
   @Field({ nullable: true })
   startedAt?: Date;

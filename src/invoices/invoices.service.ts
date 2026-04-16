@@ -28,6 +28,10 @@ import {
 import { sendInvoiceNotification } from "../email/send-invoice-email";
 import { generateInvoicePdf } from "../email/generate-invoice-pdf";
 import { mapInvoiceToEntity } from "./utils/invoice-mapper.util";
+import {
+  resolveNotificationRecipients,
+  NotificationRecipient,
+} from "./utils/resolve-notification-recipients.util";
 
 @Injectable()
 export class InvoicesService {
@@ -170,7 +174,19 @@ export class InvoicesService {
             create: linesToCreate,
           },
         },
-        include: { lines: true, payments: true },
+        include: {
+          lines: true,
+          payments: true,
+          student: true,
+          family: {
+            include: {
+              students: {
+                include: { classStudents: { include: { class: true } } },
+              },
+              guardians: true,
+            },
+          },
+        },
       });
       if (chargeIds.length > 0) {
         await tx.charge.updateMany({
@@ -181,38 +197,59 @@ export class InvoicesService {
       return invoice;
     });
 
-    if (input.notify && result.recipientEmail) {
-      try {
-        const academy = await this.prisma.academy.findUnique({
-          where: { id: academyId },
-          select: { name: true },
-        });
-        const pdfBuffer = generateInvoicePdf({
-          invoiceNumber: result.invoiceNumber,
-          recipientName: result.recipientName,
-          recipientEmail: result.recipientEmail,
-          recipientPhone: result.recipientPhone,
-          recipientAddress: result.recipientAddress,
-          issueDate: result.issueDate,
-          dueDate: result.dueDate,
-          subtotal: result.subtotal,
-          totalDiscount: result.totalDiscount,
-          total: result.total,
-          publicNotes: result.publicNotes,
-          lines: result.lines,
-        });
-        await sendInvoiceNotification({
-          recipientEmail: result.recipientEmail,
-          recipientName: result.recipientName,
-          invoiceNumber: result.invoiceNumber,
-          total: result.total,
-          issueDate: result.issueDate,
-          dueDate: result.dueDate,
-          academyName: academy?.name ?? "Academia",
-          pdfBuffer,
-        });
-      } catch (error) {
-        console.error("Failed to send invoice notification:", error);
+    if (input.notify) {
+      const recipients: NotificationRecipient[] = studentId
+        ? await resolveNotificationRecipients(studentId, this.prisma)
+        : result.recipientEmail
+          ? [
+              {
+                email: result.recipientEmail,
+                name: result.recipientName,
+              },
+            ]
+          : [];
+      if (recipients.length > 0) {
+        try {
+          const academy = await this.prisma.academy.findUnique({
+            where: { id: academyId },
+            select: { name: true },
+          });
+          const pdfBuffer = generateInvoicePdf({
+            invoiceNumber: result.invoiceNumber,
+            recipientName: result.recipientName,
+            recipientEmail: result.recipientEmail,
+            recipientPhone: result.recipientPhone,
+            recipientAddress: result.recipientAddress,
+            issueDate: result.issueDate,
+            dueDate: result.dueDate,
+            subtotal: result.subtotal,
+            totalDiscount: result.totalDiscount,
+            total: result.total,
+            publicNotes: result.publicNotes,
+            lines: result.lines,
+          });
+          for (const recipient of recipients) {
+            try {
+              await sendInvoiceNotification({
+                recipientEmail: recipient.email,
+                recipientName: recipient.name,
+                invoiceNumber: result.invoiceNumber,
+                total: result.total,
+                issueDate: result.issueDate,
+                dueDate: result.dueDate,
+                academyName: academy?.name ?? "Academia",
+                pdfBuffer,
+              });
+            } catch (error) {
+              console.error(
+                `Failed to send invoice notification to ${recipient.email}:`,
+                error,
+              );
+            }
+          }
+        } catch (error) {
+          console.error("Failed to process invoice notifications:", error);
+        }
       }
     }
 
@@ -226,11 +263,39 @@ export class InvoicesService {
     input: AddInvoiceLineInput,
     academyId: string,
   ): Promise<Invoice> {
+    type PrismaInvoiceWithLinesAndPayments = Prisma.InvoiceGetPayload<{
+      include: {
+        lines: true;
+        payments: true;
+        student: true;
+        family: {
+          include: {
+            students: {
+              include: { classStudents: { include: { class: true } } };
+            };
+            guardians: true;
+          };
+        };
+      };
+    }>;
+
     const { invoiceId, line: lineInput } = input;
-    const invoice = await this.prisma.invoice.findUnique({
+    const invoice = (await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
-      include: { lines: true, payments: true },
-    });
+      include: {
+        lines: true,
+        payments: true,
+        student: true,
+        family: {
+          include: {
+            students: {
+              include: { classStudents: { include: { class: true } } },
+            },
+            guardians: true,
+          },
+        },
+      },
+    })) as PrismaInvoiceWithLinesAndPayments;
 
     // Ownership: validar que invoice pertenece a la academy
     assertOwnership(invoice, academyId, "Invoice");
@@ -467,7 +532,19 @@ export class InvoicesService {
   async voidInvoice(invoiceId: string, academyId: string): Promise<Invoice> {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
-      include: { lines: true, payments: true },
+      include: {
+        lines: true,
+        payments: true,
+        student: true,
+        family: {
+          include: {
+            students: {
+              include: { classStudents: { include: { class: true } } },
+            },
+            guardians: true,
+          },
+        },
+      },
     });
 
     // Ownership: validar que invoice pertenece a la academy
@@ -545,7 +622,19 @@ export class InvoicesService {
   async findById(invoiceId: string, academyId: string): Promise<Invoice> {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
-      include: { lines: true, payments: true },
+      include: {
+        lines: true,
+        payments: true,
+        student: true,
+        family: {
+          include: {
+            students: {
+              include: { classStudents: { include: { class: true } } },
+            },
+            guardians: true,
+          },
+        },
+      },
     });
 
     // Ownership: validar que invoice pertenece a la academy
@@ -587,7 +676,19 @@ export class InvoicesService {
       this.prisma.invoice.count({ where }),
       this.prisma.invoice.findMany({
         where,
-        include: { lines: true, payments: true },
+        include: {
+          lines: true,
+          payments: true,
+          student: true,
+          family: {
+            include: {
+              students: {
+                include: { classStudents: { include: { class: true } } },
+              },
+              guardians: true,
+            },
+          },
+        },
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
@@ -627,7 +728,19 @@ export class InvoicesService {
           },
           orderBy: { dueDate: "asc" },
           take: 3,
-          include: { lines: true, payments: true },
+          include: {
+            lines: true,
+            payments: true,
+            student: true,
+            family: {
+              include: {
+                students: {
+                  include: { classStudents: { include: { class: true } } },
+                },
+                guardians: true,
+              },
+            },
+          },
         }),
         this.prisma.invoice.findMany({
           where: {

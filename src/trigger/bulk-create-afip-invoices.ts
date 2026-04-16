@@ -15,6 +15,8 @@ import {
   resolveDocTipo,
   resolveCondicionIvaReceptor,
 } from "../afip/utils/resolve-cbte-tipo";
+import { BulkAfipInvoiceResult } from "../bulk-operations/types/bulk-invoice.types";
+import { runBulkOperation } from "./utils/run-bulk-operation.util";
 
 const prisma = new PrismaClient();
 
@@ -25,29 +27,6 @@ interface BulkAfipPayload {
   cbteFch: string; // ISO date
   academyId: string;
 }
-
-interface AfipItemResult {
-  invoiceId: string;
-  studentName: string;
-  invoiceNumber: number;
-  status: "emitted" | "failed" | "skipped";
-  cbteNro?: number;
-  cae?: string;
-  total?: number;
-  error?: string;
-}
-
-// Prisma dynamic accessor for bulkOperation (same pattern as bulk-create-invoices)
-const bulkOp = (prisma as unknown as Record<string, unknown>)[
-  "bulkOperation"
-] as {
-  update: (args: {
-    where: { id: string };
-    data: Record<string, unknown>;
-  }) => Promise<unknown>;
-};
-const updateOperation = (id: string, data: Record<string, unknown>) =>
-  bulkOp.update({ where: { id }, data });
 
 /**
  * Formats a Date as YYYYMMDD for AFIP
@@ -69,36 +48,29 @@ export const bulkCreateAfipInvoicesTask = task({
     const [year, month, day] = cbteFchClean.split("-").map(Number);
     const emissionDate = new Date(year, month - 1, day);
 
-    await updateOperation(operationId, {
-      status: "PROCESSING",
-      startedAt: new Date(),
-    });
-
-    // Load academy AFIP settings
     const afipSettings = await prisma.academyAfipSettings.findUnique({
       where: { academyId },
     });
 
     if (!afipSettings) {
-      await updateOperation(operationId, {
-        status: "FAILED",
-        completedAt: new Date(),
+      await prisma.bulkOperation.update({
+        where: { id: operationId },
+        data: { status: "FAILED", completedAt: new Date() },
       });
       throw new Error("La academia no tiene configuración AFIP");
     }
 
     const afip = createAfipInstance(afipSettings);
 
-    const results: AfipItemResult[] = [];
-    let completedItems = 0;
-    let failedItems = 0;
-    let skippedItems = 0;
-
     // Cache last voucher number per cbteTipo. Reset on error to force re-query.
     const lastVoucherByTipo = new Map<number, number>();
 
-    for (const invoiceId of invoiceIds) {
-      try {
+    return runBulkOperation<string, BulkAfipInvoiceResult>({
+      prisma,
+      operationId,
+      items: invoiceIds,
+      logLabel: "bulk-create-afip-invoices",
+      processItem: async (invoiceId) => {
         const result = await processInvoice(
           invoiceId,
           afipSettings,
@@ -107,58 +79,23 @@ export const bulkCreateAfipInvoicesTask = task({
           emissionDate,
           lastVoucherByTipo,
         );
-
-        results.push(result);
-
-        if (result.status === "emitted") completedItems++;
-        else if (result.status === "skipped") skippedItems++;
-        else {
-          failedItems++;
-          lastVoucherByTipo.clear(); // Force re-query after failure
+        if (result.status === "failed") {
+          // Force re-query of last voucher number after a failure
+          lastVoucherByTipo.clear();
         }
-      } catch (error) {
-        failedItems++;
-        const errorMessage =
-          error instanceof Error ? error.message : "Error desconocido";
-
-        logger.error(`Failed to process invoice ${invoiceId}`, {
-          error: errorMessage,
-        });
-
-        results.push({
+        return result;
+      },
+      buildFailureResult: (invoiceId, error) => {
+        lastVoucherByTipo.clear();
+        return {
           invoiceId,
           studentName: "Unknown",
           invoiceNumber: 0,
           status: "failed",
-          error: errorMessage,
-        });
-      }
-
-      await updateOperation(operationId, {
-        completedItems,
-        failedItems,
-        skippedItems,
-        results: structuredClone(results),
-      });
-    }
-
-    await updateOperation(operationId, {
-      status: "COMPLETED",
-      completedAt: new Date(),
-      completedItems,
-      failedItems,
-      skippedItems,
-      results: structuredClone(results),
+          error,
+        };
+      },
     });
-
-    logger.info("Bulk AFIP invoice creation completed", {
-      operationId,
-      completedItems,
-      failedItems,
-      skippedItems,
-    });
-
-    return { completedItems, failedItems, skippedItems };
   },
 });
 
@@ -169,7 +106,7 @@ async function processInvoice(
   ptoVta: number,
   emissionDate: Date,
   lastVoucherByTipo: Map<number, number>,
-): Promise<AfipItemResult> {
+): Promise<BulkAfipInvoiceResult> {
   const invoice = await prisma.invoice.findUnique({
     where: { id: invoiceId },
     include: {
@@ -321,6 +258,10 @@ async function processInvoice(
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Error AFIP desconocido";
+
+    logger.error(`Failed to emit AFIP invoice ${invoiceId}`, {
+      error: errorMessage,
+    });
 
     await prisma.afipInvoice.update({
       where: { id: afipInvoice.id },

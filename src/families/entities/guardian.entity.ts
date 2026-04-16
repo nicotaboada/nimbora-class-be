@@ -63,6 +63,9 @@ export class Guardian {
   emailNotifications: boolean;
 
   @Field()
+  isResponsibleForBilling: boolean;
+
+  @Field()
   isActive: boolean;
 
   @Field(() => [FamilyStudentSummary])

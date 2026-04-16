@@ -4,10 +4,12 @@ import { BulkOperationsService } from "./bulk-operations.service";
 import { BulkOperation } from "./entities/bulk-operation.entity";
 import { BulkCreateInvoicesInput } from "./dto/bulk-create-invoices.input";
 import { BulkCreateAfipInvoicesInput } from "./dto/bulk-create-afip-invoices.input";
-import { StudentsForBulkInvoiceInput } from "./dto/students-for-bulk-invoice.input";
+import { BulkCreateFamilyInvoicesInput } from "./dto/bulk-create-family-invoices.input";
+import { BulkInvoiceFilterInput } from "./dto/bulk-invoice-filter.input";
 import { InvoicesForBulkAfipInput } from "./dto/invoices-for-bulk-afip.input";
 import { PaginatedStudentsForBulkInvoice } from "./dto/paginated-students-for-bulk-invoice.output";
 import { PaginatedInvoicesForBulkAfip } from "./dto/paginated-invoices-for-bulk-afip.output";
+import { PaginatedFamiliesForBulkInvoice } from "./dto/paginated-families-for-bulk-invoice.output";
 import { AfipBulkSummary } from "./entities/afip-bulk-summary.entity";
 import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -28,13 +30,37 @@ export class BulkOperationsResolver {
   })
   async findStudentsForBulkInvoice(
     @CurrentUser() user: User,
-    @Args("input") input: StudentsForBulkInvoiceInput,
+    @Args("input") input: BulkInvoiceFilterInput,
     @Args("page", { type: () => Int, nullable: true, defaultValue: 1 })
     page: number,
     @Args("limit", { type: () => Int, nullable: true, defaultValue: 10 })
     limit: number,
   ): Promise<PaginatedStudentsForBulkInvoice> {
     return this.bulkOperationsService.findStudentsForBulkInvoice(
+      input,
+      user.academyId,
+      page,
+      limit,
+    );
+  }
+
+  /**
+   * Lista familias con sus estudiantes que tengan charges PENDING para facturación masiva.
+   */
+  @Query(() => PaginatedFamiliesForBulkInvoice, {
+    name: "familiesForBulkInvoice",
+    description:
+      "Familias con charges pendientes para facturación masiva (paginado)",
+  })
+  async findFamiliesForBulkInvoice(
+    @CurrentUser() user: User,
+    @Args("input") input: BulkInvoiceFilterInput,
+    @Args("page", { type: () => Int, nullable: true, defaultValue: 1 })
+    page: number,
+    @Args("limit", { type: () => Int, nullable: true, defaultValue: 10 })
+    limit: number,
+  ): Promise<PaginatedFamiliesForBulkInvoice> {
+    return this.bulkOperationsService.findFamiliesForBulkInvoice(
       input,
       user.academyId,
       page,
@@ -54,6 +80,23 @@ export class BulkOperationsResolver {
     @CurrentUser() user: User,
   ): Promise<BulkOperation> {
     return this.bulkOperationsService.bulkCreateInvoices(input, user.academyId);
+  }
+
+  /**
+   * Crea facturas familiares en bulk (una factura por familia, procesamiento en background).
+   */
+  @Mutation(() => BulkOperation, {
+    description:
+      "Genera facturas familiares en bulk. Una factura por familia con los cargos de todos sus estudiantes.",
+  })
+  async bulkCreateFamilyInvoices(
+    @Args("input") input: BulkCreateFamilyInvoicesInput,
+    @CurrentUser() user: User,
+  ): Promise<BulkOperation> {
+    return this.bulkOperationsService.bulkCreateFamilyInvoices(
+      input,
+      user.academyId,
+    );
   }
 
   // ─── AFIP Bulk ─────────────────────────────────────────────────────────────

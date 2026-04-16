@@ -1,9 +1,13 @@
 import { ObjectType, Field, Int } from "@nestjs/graphql";
+import {
+  BulkAfipInvoiceResult,
+  BulkItemStatus,
+} from "../types/bulk-invoice.types";
 
 @ObjectType({
   description: "Resultado por item de una operación bulk de emisión AFIP",
 })
-export class BulkAfipResult {
+export class BulkAfipResult implements BulkAfipInvoiceResult {
   @Field({ description: "ID de la factura interna" })
   invoiceId: string;
 
@@ -14,7 +18,7 @@ export class BulkAfipResult {
   invoiceNumber: number;
 
   @Field({ description: "Estado: emitted, failed, skipped" })
-  status: string;
+  status: BulkItemStatus;
 
   @Field(() => Int, {
     nullable: true,

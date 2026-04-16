@@ -2,6 +2,8 @@ import { ObjectType, Field, Int } from "@nestjs/graphql";
 import { InvoiceStatus } from "../enums/invoice-status.enum";
 import { InvoiceLine } from "./invoice-line.entity";
 import { Payment } from "../../payments/entities/payment.entity";
+import { Student } from "../../students/entities/student.entity";
+import { Family } from "../../families/entities/family.entity";
 
 @ObjectType()
 export class Invoice {
@@ -16,6 +18,18 @@ export class Invoice {
     description: "ID del estudiante (null si es OTHER)",
   })
   studentId?: string;
+
+  @Field(() => Student, { nullable: true })
+  student?: Student;
+
+  @Field({
+    nullable: true,
+    description: "ID de la familia (null si no es familia)",
+  })
+  familyId?: string;
+
+  @Field(() => Family, { nullable: true })
+  family?: Family;
 
   @Field({ description: "Nombre del destinatario" })
   recipientName: string;

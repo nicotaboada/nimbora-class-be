@@ -8,9 +8,10 @@ import {
   ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
+import { BulkInvoiceItem } from "../types/bulk-invoice.types";
 
 @InputType()
-export class BulkInvoiceItemInput {
+export class BulkInvoiceItemInput implements BulkInvoiceItem {
   @Field({ description: "ID del estudiante" })
   @IsUUID("4")
   studentId: string;

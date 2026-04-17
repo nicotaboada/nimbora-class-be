@@ -738,6 +738,7 @@ export class BulkOperationsService {
     const isAfip = operation.type === PrismaBulkOperationType.BULK_AFIP;
     const isFamily =
       operation.type === PrismaBulkOperationType.BULK_FAMILY_INVOICE;
+    const isInvoice = operation.type === PrismaBulkOperationType.BULK_INVOICE;
     const results = (operation.results ?? []) as unknown;
 
     return {
@@ -748,7 +749,7 @@ export class BulkOperationsService {
       completedItems: operation.completedItems,
       failedItems: operation.failedItems,
       skippedItems: operation.skippedItems,
-      results: isAfip || isFamily ? [] : (results as BulkOperationResult[]),
+      results: isInvoice ? (results as BulkOperationResult[]) : [],
       afipResults: isAfip ? (results as BulkAfipResult[]) : [],
       familyResults: isFamily ? (results as BulkFamilyOperationResult[]) : [],
       startedAt: operation.startedAt ?? undefined,

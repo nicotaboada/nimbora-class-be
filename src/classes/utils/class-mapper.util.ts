@@ -2,7 +2,6 @@ import {
   Class as PrismaClass,
   Program as PrismaProgram,
   Teacher as PrismaTeacher,
-  ContactInfo as PrismaContactInfo,
 } from "@prisma/client";
 import { ClassEntity } from "../entities/class.entity";
 import { mapTeacherToEntity } from "../../teachers/utils/teacher-mapper.util";
@@ -10,9 +9,7 @@ import { mapProgramToEntity } from "../../programs/utils/program-mapper.util";
 
 type PrismaClassWithRelations = PrismaClass & {
   program: PrismaProgram;
-  teacher: PrismaTeacher & {
-    contactInfo?: PrismaContactInfo | null;
-  };
+  teacher: PrismaTeacher;
   students?: {
     id: string;
   }[];

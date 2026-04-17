@@ -1,9 +1,5 @@
-import {
-  Teacher as PrismaTeacher,
-  ContactInfo as PrismaContactInfo,
-} from "@prisma/client";
+import { Teacher as PrismaTeacher } from "@prisma/client";
 import { Teacher } from "../entities/teacher.entity";
-import { ContactInfo } from "../../contact-info/entities/contact-info.entity";
 import { Status } from "../../common/enums";
 import {
   genderMap,
@@ -11,31 +7,7 @@ import {
   statusMap,
 } from "../../common/utils/enum-maps.util";
 
-function mapContactInfoToEntity(
-  prismaContactInfo: PrismaContactInfo,
-): ContactInfo {
-  return {
-    id: prismaContactInfo.id,
-    email: prismaContactInfo.email,
-    phoneCountryCode: prismaContactInfo.phoneCountryCode,
-    phoneNumber: prismaContactInfo.phoneNumber,
-    address: prismaContactInfo.address,
-    country: prismaContactInfo.country,
-    state: prismaContactInfo.state,
-    city: prismaContactInfo.city,
-    postalCode: prismaContactInfo.postalCode,
-    createdAt: prismaContactInfo.createdAt,
-    updatedAt: prismaContactInfo.updatedAt,
-  };
-}
-
-export function mapTeacherToEntity(
-  prismaTeacher: PrismaTeacher & { contactInfo?: PrismaContactInfo | null },
-): Teacher {
-  const contactInfo = prismaTeacher.contactInfo
-    ? mapContactInfoToEntity(prismaTeacher.contactInfo)
-    : undefined;
-
+export function mapTeacherToEntity(prismaTeacher: PrismaTeacher): Teacher {
   return {
     id: prismaTeacher.id,
     academyId: prismaTeacher.academyId,
@@ -48,7 +20,14 @@ export function mapTeacherToEntity(
       : undefined,
     documentNumber: prismaTeacher.documentNumber,
     avatarUrl: prismaTeacher.avatarUrl,
-    contactInfo,
+    email: prismaTeacher.email ?? undefined,
+    phoneCountryCode: prismaTeacher.phoneCountryCode ?? undefined,
+    phoneNumber: prismaTeacher.phoneNumber ?? undefined,
+    address: prismaTeacher.address ?? undefined,
+    country: prismaTeacher.country ?? undefined,
+    state: prismaTeacher.state ?? undefined,
+    city: prismaTeacher.city ?? undefined,
+    postalCode: prismaTeacher.postalCode ?? undefined,
     status: statusMap[prismaTeacher.status] || Status.ENABLED,
     createdAt: prismaTeacher.createdAt,
     updatedAt: prismaTeacher.updatedAt,

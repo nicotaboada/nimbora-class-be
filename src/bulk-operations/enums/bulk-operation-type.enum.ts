@@ -4,6 +4,7 @@ export enum BulkOperationType {
   BULK_INVOICE = "BULK_INVOICE",
   BULK_AFIP = "BULK_AFIP",
   BULK_FAMILY_INVOICE = "BULK_FAMILY_INVOICE",
+  BULK_STUDENT_IMPORT = "BULK_STUDENT_IMPORT",
 }
 
 registerEnumType(BulkOperationType, {

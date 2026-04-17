@@ -410,6 +410,17 @@ type BulkFamilyOperationResult {
   totalLines: Int
 }
 
+input BulkInvoiceFilterInput {
+  """Incluir cargos pendientes de periodos anteriores al seleccionado"""
+  includePastDue: Boolean! = false
+
+  """Periodo de facturación (formato YYYY-MM)"""
+  period: String!
+
+  """Buscar por nombre o email"""
+  search: String
+}
+
 input BulkInvoiceItemInput {
   """IDs de los charges a facturar"""
   chargeIds: [String!]!
@@ -478,6 +489,7 @@ enum BulkOperationType {
   BULK_AFIP
   BULK_FAMILY_INVOICE
   BULK_INVOICE
+  BULK_STUDENT_IMPORT
 }
 
 type Charge {
@@ -607,20 +619,6 @@ input ClassesFilterInput {
   programId: String
   search: String
   teacherId: String
-}
-
-type ContactInfo {
-  address: String
-  city: String
-  country: String
-  createdAt: DateTime!
-  email: String
-  id: String!
-  phoneCountryCode: String
-  phoneNumber: String
-  postalCode: String
-  state: String
-  updatedAt: DateTime!
 }
 
 input CreateAcademyInput {
@@ -753,15 +751,21 @@ input CreateStudentInput {
 }
 
 input CreateTeacherInput {
+  address: String
   birthDate: DateTime
+  city: String
   classIds: [String!]
+  country: String
   documentNumber: String
   documentType: DocumentType
   email: String
   firstName: String!
   gender: Gender
   lastName: String!
+  phoneCountryCode: String
   phoneNumber: String
+  postalCode: String
+  state: String
 }
 
 input CreateUserInput {
@@ -806,6 +810,13 @@ enum DocumentType {
   NIE
   OTHER
   PASSPORT
+}
+
+input ExecuteImportInput {
+  entityType: ImportEntityType!
+
+  """Contenido del archivo XLSX en base64"""
+  fileBase64: String!
 }
 
 type Family {
@@ -944,6 +955,40 @@ enum GuardianRelationship {
   TIA
   TIO
   TUTOR
+}
+
+"""Tipo de entidad a importar desde archivo"""
+enum ImportEntityType {
+  STUDENT
+}
+
+type ImportTemplateFile {
+  """Contenido del archivo en base64"""
+  fileBase64: String!
+
+  """Nombre sugerido del archivo"""
+  filename: String!
+
+  """MIME type del archivo"""
+  mimeType: String!
+}
+
+type ImportValidationError {
+  """Columna del archivo donde está el error"""
+  column: String!
+
+  """Mensaje de error en texto plano"""
+  message: String!
+
+  """Número de fila en el archivo (1-indexed)"""
+  row: Int!
+}
+
+type ImportValidationResult {
+  errors: [ImportValidationError!]!
+  invalidRows: Int!
+  totalRows: Int!
+  validRows: Int!
 }
 
 type Invoice {
@@ -1195,6 +1240,11 @@ type Mutation {
     id: ID!
   ): Boolean!
   deleteFee(id: ID!): Fee!
+
+  """
+  Ejecuta la importación masiva. Requiere que el archivo esté validado y sin errores.
+  """
+  executeBulkImport(input: ExecuteImportInput!): BulkOperation!
   removeAcademy(id: String!): Academy!
   removeGuardianFromFamily(familyId: String!, guardianId: String!): Family!
 
@@ -1249,7 +1299,7 @@ type Mutation {
   updateStudentContactInfo(input: UpdateStudentContactInfoInput!): Student!
   updateStudentPersonalInfo(input: UpdateStudentPersonalInfoInput!): Student!
   updateTeacher(updateTeacherInput: UpdateTeacherInput!): Teacher!
-  updateTeacherContactInfo(input: UpdateContactInfoInput!): Teacher!
+  updateTeacherContactInfo(input: UpdateTeacherContactInfoInput!): Teacher!
   updateUser(input: UpdateUserInput!): User!
 
   """Crea o actualiza un perfil de facturación de un alumno"""
@@ -1262,6 +1312,9 @@ type Mutation {
     """ID del punto de venta a validar"""
     id: String!
   ): AfipSalesPoint!
+
+  """Valida un archivo XLSX de importación sin escribir en la DB (dry-run)"""
+  validateBulkImport(input: ValidateImportInput!): ImportValidationResult!
 
   """
   Step 3: Verifica la delegación WSFE y avanza onboarding de DELEGATION_2 a COMPLETED
@@ -1508,10 +1561,13 @@ type Query {
   classStudents(classId: String!, limit: Int! = 10, page: Int! = 1, search: String): PaginatedClassStudents!
   classes(filter: ClassesFilterInput): PaginatedClasses!
   classesByStudent(studentId: String!): [Class!]!
+
+  """Descarga la plantilla XLSX para importar alumnos"""
+  downloadStudentImportTemplate: ImportTemplateFile!
   families(limit: Int = 10, page: Int = 1, search: String): PaginatedFamilies!
 
   """Familias con charges pendientes para facturación masiva (paginado)"""
-  familiesForBulkInvoice(input: StudentsForBulkInvoiceInput!, limit: Int = 10, page: Int = 1): PaginatedFamiliesForBulkInvoice!
+  familiesForBulkInvoice(input: BulkInvoiceFilterInput!, limit: Int = 10, page: Int = 1): PaginatedFamiliesForBulkInvoice!
   family(id: String!): Family!
   familyStudents(familyId: String!, limit: Int = 10, page: Int = 1, search: String): PaginatedStudents!
 
@@ -1579,7 +1635,7 @@ type Query {
   students(classId: String, limit: Int = 10, page: Int = 1, search: String, status: Status): PaginatedStudents!
 
   """Estudiantes con charges pendientes para facturación masiva (paginado)"""
-  studentsForBulkInvoice(input: StudentsForBulkInvoiceInput!, limit: Int = 10, page: Int = 1): PaginatedStudentsForBulkInvoice!
+  studentsForBulkInvoice(input: BulkInvoiceFilterInput!, limit: Int = 10, page: Int = 1): PaginatedStudentsForBulkInvoice!
   teacher(id: String!): Teacher!
   teacherStats: TeacherStats!
   teachers(classId: String, limit: Int!, page: Int!, search: String, status: Status): PaginatedTeachers!
@@ -1812,17 +1868,6 @@ type StudentStats {
   total: Int!
 }
 
-input StudentsForBulkInvoiceInput {
-  """Incluir cargos pendientes de periodos anteriores al seleccionado"""
-  includePastDue: Boolean! = false
-
-  """Periodo de facturación (formato YYYY-MM)"""
-  period: String!
-
-  """Buscar por nombre o email"""
-  search: String
-}
-
 """Datos del contribuyente obtenidos de ARCA"""
 type TaxpayerInfo {
   """Actividad económica principal"""
@@ -1858,17 +1903,24 @@ type TaxpayerInfo {
 
 type Teacher {
   academyId: String!
+  address: String
   avatarUrl: String
   birthDate: DateTime
+  city: String
   classes: [Class!]
-  contactInfo: ContactInfo
+  country: String
   createdAt: DateTime!
   documentNumber: String
   documentType: DocumentType
+  email: String
   firstName: String!
   gender: Gender
   id: String!
   lastName: String!
+  phoneCountryCode: String
+  phoneNumber: String
+  postalCode: String
+  state: String
   status: Status!
   updatedAt: DateTime!
 }
@@ -1921,18 +1973,6 @@ input UpdateClassInput {
   programId: String
   startDate: DateTime
   teacherId: String
-}
-
-input UpdateContactInfoInput {
-  address: String
-  city: String
-  country: String
-  email: String
-  phoneCountryCode: String
-  phoneNumber: String
-  postalCode: String
-  state: String
-  teacherId: String!
 }
 
 input UpdateGuardianBillingInput {
@@ -2043,9 +2083,24 @@ input UpdateStudentPersonalInfoInput {
   lastName: String
 }
 
+input UpdateTeacherContactInfoInput {
+  address: String
+  city: String
+  country: String
+  email: String
+  phoneCountryCode: String
+  phoneNumber: String
+  postalCode: String
+  state: String
+  teacherId: String!
+}
+
 input UpdateTeacherInput {
+  address: String
   avatarUrl: String
   birthDate: DateTime
+  city: String
+  country: String
   documentNumber: String
   documentType: DocumentType
   email: String
@@ -2053,7 +2108,10 @@ input UpdateTeacherInput {
   gender: Gender
   id: String!
   lastName: String
+  phoneCountryCode: String
   phoneNumber: String
+  postalCode: String
+  state: String
   status: Status
 }
 
@@ -2143,6 +2201,13 @@ enum UserRole {
   STAFF
   STUDENT
   TEACHER
+}
+
+input ValidateImportInput {
+  entityType: ImportEntityType!
+
+  """Contenido del archivo XLSX en base64"""
+  fileBase64: String!
 }
 
 """Input para anular un pago"""

@@ -1,12 +1,13 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma, Status } from "@prisma/client";
 import { PrismaService } from "src/prisma/prisma.service";
 import { CreateTeacherInput } from "./dto/create-teacher.input";
 import { UpdateTeacherInput } from "./dto/update-teacher.input";
-import { UpdateContactInfoInput } from "../contact-info/dto/update-contact-info.input";
+import { UpdateTeacherContactInfoInput } from "./dto/update-teacher-contact-info.input";
 import { mapTeacherToEntity } from "./utils/teacher-mapper.util";
 import { Teacher, TeacherStats } from "./entities/teacher.entity";
 import { assertOwnership } from "src/common/utils/tenant-validation";
+import { assertEmailUniqueInAcademy } from "src/common/utils/email-uniqueness.util";
 
 interface TeacherPagination {
   data: Teacher[];
@@ -21,33 +22,46 @@ interface TeacherPagination {
 
 @Injectable()
 export class TeachersService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(input: CreateTeacherInput, academyId: string): Promise<Teacher> {
-    const { classIds, email, phoneNumber, ...teacherData } = input;
+    const { classIds, ...teacherData } = input;
 
-    const teacher = await this.prisma.teacher.create({
-      data: {
-        ...teacherData,
+    if (teacherData.email) {
+      await assertEmailUniqueInAcademy(
+        this.prisma,
         academyId,
-        contactInfo: {
-          create: {
-            email,
-            phoneNumber,
-          },
-        },
-      },
-      include: { contactInfo: true },
-    });
-
-    if (classIds && classIds.length > 0) {
-      await this.prisma.class.updateMany({
-        where: { id: { in: classIds } },
-        data: { teacherId: teacher.id },
-      });
+        teacherData.email,
+      );
     }
 
-    return mapTeacherToEntity(teacher);
+    try {
+      const teacher = await this.prisma.teacher.create({
+        data: {
+          ...teacherData,
+          academyId,
+        },
+      });
+
+      if (classIds && classIds.length > 0) {
+        await this.prisma.class.updateMany({
+          where: { id: { in: classIds } },
+          data: { teacherId: teacher.id },
+        });
+      }
+
+      return mapTeacherToEntity(teacher);
+    } catch (error: unknown) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new BadRequestException(
+          "El email ya está registrado para otro profesor en esta academia",
+        );
+      }
+      throw error;
+    }
   }
 
   async findAll(
@@ -81,7 +95,6 @@ export class TeachersService {
       skip,
       take: limit,
       orderBy: { createdAt: "desc" },
-      include: { contactInfo: true },
     });
     const total = await this.prisma.teacher.count({ where });
 
@@ -100,7 +113,6 @@ export class TeachersService {
   async findOne(id: string, academyId: string): Promise<Teacher> {
     const teacher = await this.prisma.teacher.findUnique({
       where: { id },
-      include: { contactInfo: true },
     });
 
     assertOwnership(teacher, academyId, "Teacher");
@@ -117,13 +129,33 @@ export class TeachersService {
 
     assertOwnership(teacher, academyId, "Teacher");
 
-    const updated = await this.prisma.teacher.update({
-      where: { id },
-      data: updateData,
-      include: { contactInfo: true },
-    });
+    if (updateData.email) {
+      await assertEmailUniqueInAcademy(
+        this.prisma,
+        academyId,
+        updateData.email,
+        { entity: "teacher", id },
+      );
+    }
 
-    return mapTeacherToEntity(updated);
+    try {
+      const updated = await this.prisma.teacher.update({
+        where: { id },
+        data: updateData,
+      });
+
+      return mapTeacherToEntity(updated);
+    } catch (error: unknown) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new BadRequestException(
+          "El email ya está registrado para otro profesor en esta academia",
+        );
+      }
+      throw error;
+    }
   }
 
   async remove(id: string, academyId: string): Promise<Teacher> {
@@ -135,7 +167,6 @@ export class TeachersService {
 
     const deleted = await this.prisma.teacher.delete({
       where: { id },
-      include: { contactInfo: true },
     });
 
     return mapTeacherToEntity(deleted);
@@ -156,7 +187,7 @@ export class TeachersService {
   }
 
   async updateContactInfo(
-    input: UpdateContactInfoInput,
+    input: UpdateTeacherContactInfoInput,
     academyId: string,
   ): Promise<Teacher> {
     const { teacherId, ...contactData } = input;
@@ -167,18 +198,32 @@ export class TeachersService {
 
     assertOwnership(teacher, academyId, "Teacher");
 
-    // Upsert contactInfo (create if not exists, update if exists)
-    await this.prisma.contactInfo.upsert({
-      where: { teacherId },
-      update: contactData,
-      create: { teacherId, ...contactData },
-    });
+    if (contactData.email) {
+      await assertEmailUniqueInAcademy(
+        this.prisma,
+        academyId,
+        contactData.email,
+        { entity: "teacher", id: teacherId },
+      );
+    }
 
-    const updated = await this.prisma.teacher.findUnique({
-      where: { id: teacherId },
-      include: { contactInfo: true },
-    });
+    try {
+      const updated = await this.prisma.teacher.update({
+        where: { id: teacherId },
+        data: contactData,
+      });
 
-    return mapTeacherToEntity(updated);
+      return mapTeacherToEntity(updated);
+    } catch (error: unknown) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new BadRequestException(
+          "El email ya está registrado para otro profesor en esta academia",
+        );
+      }
+      throw error;
+    }
   }
 }

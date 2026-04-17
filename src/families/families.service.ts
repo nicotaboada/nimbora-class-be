@@ -10,6 +10,7 @@ import { UpdateGuardianNotificationsInput } from "./dto/update-guardian-notifica
 import { UpdateGuardianPersonalInfoInput } from "./dto/update-guardian-personal-info.input";
 import { UpdateGuardianContactInfoInput } from "./dto/update-guardian-contact-info.input";
 import { assertOwnership } from "../common/utils/tenant-validation";
+import { assertEmailUniqueInAcademy } from "../common/utils/email-uniqueness.util";
 import { pickDefined } from "../common/utils/pick-defined.util";
 import { mapStudentToEntity } from "../students/utils/student-mapper.util";
 import { PaginatedStudents } from "../students/dto/paginated-students.output";
@@ -166,6 +167,10 @@ export class FamiliesService {
       });
       assertOwnership(family, academyId, "Family");
       isResponsibleForBilling = family._count.guardians === 0;
+    }
+
+    if (input.email) {
+      await assertEmailUniqueInAcademy(this.prisma, academyId, input.email);
     }
 
     const guardian = await this.prisma.familyGuardian.create({
@@ -342,6 +347,15 @@ export class FamiliesService {
     // Build update data only with provided fields
     const updateData = pickDefined(input);
 
+    if (updateData.email) {
+      await assertEmailUniqueInAcademy(
+        this.prisma,
+        academyId,
+        updateData.email,
+        { entity: "guardian", id },
+      );
+    }
+
     const updated = await this.prisma.familyGuardian.update({
       where: { id },
       data: updateData,
@@ -398,6 +412,15 @@ export class FamiliesService {
 
     // Build update data only with provided fields
     const updateData = pickDefined(input);
+
+    if (updateData.email) {
+      await assertEmailUniqueInAcademy(
+        this.prisma,
+        academyId,
+        updateData.email,
+        { entity: "guardian", id: input.guardianId },
+      );
+    }
 
     const updated = await this.prisma.familyGuardian.update({
       where: { id: input.guardianId },

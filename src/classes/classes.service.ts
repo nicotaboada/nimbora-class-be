@@ -42,11 +42,7 @@ export class ClassesService {
       },
       include: {
         program: true,
-        teacher: {
-          include: {
-            contactInfo: true,
-          },
-        },
+        teacher: true,
       },
     });
 
@@ -58,11 +54,7 @@ export class ClassesService {
       where: { id },
       include: {
         program: true,
-        teacher: {
-          include: {
-            contactInfo: true,
-          },
-        },
+        teacher: true,
       },
     });
 
@@ -106,11 +98,7 @@ export class ClassesService {
       data: updateData,
       include: {
         program: true,
-        teacher: {
-          include: {
-            contactInfo: true,
-          },
-        },
+        teacher: true,
         students: {
           select: {
             id: true,
@@ -164,11 +152,7 @@ export class ClassesService {
         take,
         include: {
           program: true,
-          teacher: {
-            include: {
-              contactInfo: true,
-            },
-          },
+          teacher: true,
           students: {
             select: {
               id: true,
@@ -232,11 +216,7 @@ export class ClassesService {
       where: { id: input.classId },
       include: {
         program: true,
-        teacher: {
-          include: {
-            contactInfo: true,
-          },
-        },
+        teacher: true,
         students: {
           select: {
             id: true,
@@ -269,11 +249,7 @@ export class ClassesService {
       where: { id: classId },
       include: {
         program: true,
-        teacher: {
-          include: {
-            contactInfo: true,
-          },
-        },
+        teacher: true,
         students: {
           select: {
             id: true,
@@ -409,11 +385,7 @@ export class ClassesService {
         class: {
           include: {
             program: true,
-            teacher: {
-              include: {
-                contactInfo: true,
-              },
-            },
+            teacher: true,
           },
         },
       },

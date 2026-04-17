@@ -1,5 +1,4 @@
 import { ObjectType, Field, Int } from "@nestjs/graphql";
-import { ContactInfo } from "../../contact-info/entities/contact-info.entity";
 import { ClassEntity } from "../../classes/entities/class.entity";
 import { Status, Gender, DocumentType } from "../../common/enums";
 
@@ -24,7 +23,21 @@ export class Teacher {
 
   @Field({ nullable: true }) avatarUrl?: string;
 
-  @Field(() => ContactInfo, { nullable: true }) contactInfo?: ContactInfo;
+  @Field({ nullable: true }) email?: string;
+
+  @Field({ nullable: true }) phoneCountryCode?: string;
+
+  @Field({ nullable: true }) phoneNumber?: string;
+
+  @Field({ nullable: true }) address?: string;
+
+  @Field({ nullable: true }) country?: string;
+
+  @Field({ nullable: true }) state?: string;
+
+  @Field({ nullable: true }) city?: string;
+
+  @Field({ nullable: true }) postalCode?: string;
 
   @Field(() => [ClassEntity], { nullable: true }) classes?: ClassEntity[];
 

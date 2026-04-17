@@ -9,6 +9,7 @@ import { Student } from "./entities/student.entity";
 import { Status } from "../common/enums";
 import { mapStudentToEntity } from "./utils/student-mapper.util";
 import { assertOwnership } from "../common/utils/tenant-validation";
+import { assertEmailUniqueInAcademy } from "../common/utils/email-uniqueness.util";
 
 @Injectable()
 export class StudentsService {
@@ -21,6 +22,14 @@ export class StudentsService {
   ): Promise<Student> {
     try {
       const { classIds, ...studentData } = createStudentInput;
+
+      if (studentData.email) {
+        await assertEmailUniqueInAcademy(
+          this.prisma,
+          academyId,
+          studentData.email,
+        );
+      }
 
       const student = await this.prisma.student.create({
         data: {
@@ -126,6 +135,13 @@ export class StudentsService {
 
     await this.findOne(id, academyId);
 
+    if (data.email) {
+      await assertEmailUniqueInAcademy(this.prisma, academyId, data.email, {
+        entity: "student",
+        id,
+      });
+    }
+
     try {
       const student = await this.prisma.student.update({
         where: { id },
@@ -163,6 +179,14 @@ export class StudentsService {
   ): Promise<Student> {
     const { studentId, ...data } = input;
     await this.findOne(studentId, academyId);
+
+    if (data.email) {
+      await assertEmailUniqueInAcademy(this.prisma, academyId, data.email, {
+        entity: "student",
+        id: studentId,
+      });
+    }
+
     const student = await this.prisma.student.update({
       where: { id: studentId },
       data,

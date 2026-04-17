@@ -1,4 +1,12 @@
-import { Resolver, Query, Mutation, Args, Int, ResolveField, Parent } from "@nestjs/graphql";
+import {
+  Resolver,
+  Query,
+  Mutation,
+  Args,
+  Int,
+  ResolveField,
+  Parent,
+} from "@nestjs/graphql";
 import { UseGuards } from "@nestjs/common";
 import { CurrentUser } from "src/auth/decorators/current-user.decorator";
 import { SupabaseAuthGuard } from "src/auth/guards/supabase-auth.guard";
@@ -8,7 +16,7 @@ import { Teacher, TeacherStats } from "./entities/teacher.entity";
 import { PaginatedTeachers } from "./dto/paginated-teachers.output";
 import { CreateTeacherInput } from "./dto/create-teacher.input";
 import { UpdateTeacherInput } from "./dto/update-teacher.input";
-import { UpdateContactInfoInput } from "../contact-info/dto/update-contact-info.input";
+import { UpdateTeacherContactInfoInput } from "./dto/update-teacher-contact-info.input";
 import { Status } from "src/common/enums";
 import { ClassesService } from "src/classes/classes.service";
 import { ClassEntity } from "src/classes/entities/class.entity";
@@ -19,7 +27,7 @@ export class TeachersResolver {
   constructor(
     private readonly teachersService: TeachersService,
     private readonly classesService: ClassesService,
-  ) {}
+  ) { }
 
   @Mutation(() => Teacher)
   async createTeacher(
@@ -81,7 +89,7 @@ export class TeachersResolver {
 
   @Mutation(() => Teacher)
   async updateTeacherContactInfo(
-    @Args("input") input: UpdateContactInfoInput,
+    @Args("input") input: UpdateTeacherContactInfoInput,
     @CurrentUser() user: User,
   ): Promise<Teacher> {
     return this.teachersService.updateContactInfo(input, user.academyId);

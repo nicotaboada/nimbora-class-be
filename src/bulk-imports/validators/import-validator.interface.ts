@@ -1,6 +1,8 @@
 import { ImportEntityType } from "../enums/import-entity-type.enum";
 import { ImportValidationError } from "../entities/import-validation-error.entity";
 
+export const IMPORT_VALIDATORS = Symbol("IMPORT_VALIDATORS");
+
 export interface ParsedRow {
   rowNumber: number; // 1-indexed, matches what the user sees in Excel
   cells: Record<string, string | null>; // keyed by ColumnSpec.key
@@ -27,6 +29,7 @@ export interface ValidationRunResult<TNormalizedRow> {
   normalizedRows: TNormalizedRow[]; // only the valid ones, aligned by index with validRowNumbers
   validRowNumbers: number[];
   errors: ImportValidationError[];
+  warnings: ImportValidationError[];
 }
 
 export interface ImportValidator<TNormalizedRow> {
@@ -35,4 +38,10 @@ export interface ImportValidator<TNormalizedRow> {
     parsedRows: ParsedRow[],
     academyId: string,
   ): Promise<ValidationRunResult<TNormalizedRow>>;
+  /**
+   * Convert a normalized row into a JSON-serializable shape for the
+   * Trigger.dev task payload. Entities with non-serializable fields (e.g.
+   * Date) override this; the default identity works for plain rows.
+   */
+  serialize(row: TNormalizedRow): Record<string, unknown>;
 }

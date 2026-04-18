@@ -16,8 +16,8 @@ export class Student {
   @Field()
   lastName: string;
 
-  @Field()
-  email: string;
+  @Field({ nullable: true })
+  email?: string;
 
   @Field({ nullable: true })
   phoneNumber?: string;

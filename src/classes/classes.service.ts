@@ -28,11 +28,13 @@ export class ClassesService {
     });
     assertOwnership(program, academyId, "Programa");
 
-    // Validate teacher ownership
-    const teacher = await this.prisma.teacher.findUnique({
-      where: { id: input.teacherId },
-    });
-    assertOwnership(teacher, academyId, "Profesor");
+    // Validate teacher ownership (only if provided)
+    if (input.teacherId) {
+      const teacher = await this.prisma.teacher.findUnique({
+        where: { id: input.teacherId },
+      });
+      assertOwnership(teacher, academyId, "Profesor");
+    }
 
     // Create class
     const cls = await this.prisma.class.create({

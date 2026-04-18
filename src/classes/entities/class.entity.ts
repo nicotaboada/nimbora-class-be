@@ -16,14 +16,14 @@ export class ClassEntity {
   @Field(() => Program)
   program: Program;
 
-  @Field(() => Teacher)
-  teacher: Teacher;
+  @Field(() => Teacher, { nullable: true })
+  teacher?: Teacher;
 
-  @Field()
-  startDate: Date;
+  @Field({ nullable: true })
+  startDate?: Date;
 
-  @Field()
-  endDate: Date;
+  @Field({ nullable: true })
+  endDate?: Date;
 
   @Field(() => Int, { nullable: true })
   capacity?: number;

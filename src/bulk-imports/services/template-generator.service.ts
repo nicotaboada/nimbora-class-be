@@ -1,11 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import ExcelJS from "exceljs";
 import {
-  STUDENT_IMPORT_COLUMNS,
-  STUDENT_IMPORT_SHEET_NAME,
-  StudentImportColumn,
   formatColumnHeader,
-} from "../config/student-import.config";
+  ImportColumn,
+  EntityImportConfig,
+} from "../config/entity-import-config";
 
 // Row 1 = headers, row 2 = example (italic, auto-skipped by the parser),
 // rows 3..12 = user data. Data validation applies to rows 3..12.
@@ -21,17 +20,18 @@ const LIST_STORAGE_START_COL = 27;
 
 @Injectable()
 export class TemplateGeneratorService {
-  /** Returns the XLSX template for student import as a Node Buffer. */
-  async generateStudentTemplate(): Promise<Buffer> {
+  /** Returns the XLSX template for the given entity config as a Node Buffer. */
+  async generate(config: EntityImportConfig): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "Nimbora Class";
     workbook.created = new Date();
 
-    const mainSheet = workbook.addWorksheet(STUDENT_IMPORT_SHEET_NAME);
+    const mainSheet = workbook.addWorksheet(config.sheetName);
+    const columns = [...config.columns];
 
-    writeHeaderRow(mainSheet, STUDENT_IMPORT_COLUMNS);
-    writeExampleRow(mainSheet, STUDENT_IMPORT_COLUMNS);
-    attachDropdowns(mainSheet, STUDENT_IMPORT_COLUMNS);
+    writeHeaderRow(mainSheet, columns);
+    writeExampleRow(mainSheet, columns);
+    attachDropdowns(mainSheet, columns);
 
     const arrayBuffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(arrayBuffer);
@@ -40,7 +40,7 @@ export class TemplateGeneratorService {
 
 function writeHeaderRow(
   sheet: ExcelJS.Worksheet,
-  columns: StudentImportColumn[],
+  columns: ImportColumn[],
 ): void {
   const headers = columns.map((c) => formatColumnHeader(c));
   sheet.addRow(headers);
@@ -60,7 +60,7 @@ function writeHeaderRow(
 
 function writeExampleRow(
   sheet: ExcelJS.Worksheet,
-  columns: StudentImportColumn[],
+  columns: ImportColumn[],
 ): void {
   const examples = columns.map((c) => c.example);
   sheet.addRow(examples);
@@ -78,7 +78,7 @@ function writeExampleRow(
 
 function attachDropdowns(
   mainSheet: ExcelJS.Worksheet,
-  columns: StudentImportColumn[],
+  columns: ImportColumn[],
 ): void {
   const sheetName = mainSheet.name;
   let storageColumnIndex = LIST_STORAGE_START_COL;

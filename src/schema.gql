@@ -487,9 +487,11 @@ enum BulkOperationStatus {
 """Tipo de operación bulk"""
 enum BulkOperationType {
   BULK_AFIP
+  BULK_FAMILY_IMPORT
   BULK_FAMILY_INVOICE
   BULK_INVOICE
   BULK_STUDENT_IMPORT
+  BULK_TEACHER_IMPORT
 }
 
 type Charge {
@@ -594,14 +596,14 @@ type Class {
   code: String
   createdAt: DateTime!
   description: String
-  endDate: DateTime!
+  endDate: DateTime
   id: String!
   name: String!
   program: Program!
-  startDate: DateTime!
+  startDate: DateTime
   studentCount: Int!
   tags: [String!]!
-  teacher: Teacher!
+  teacher: Teacher
   updatedAt: DateTime!
 }
 
@@ -644,14 +646,16 @@ input CreateAfipSalesPointInput {
 
 input CreateClassInput {
   capacity: Float
-  endDate: DateTime!
+  code: String
+  endDate: DateTime
   name: String!
   programId: String!
-  startDate: DateTime!
-  teacherId: String!
+  startDate: DateTime
+  teacherId: String
 }
 
 input CreateFamilyInput {
+  code: String
   name: String!
 }
 
@@ -744,7 +748,7 @@ input CreateProgramInput {
 
 input CreateStudentInput {
   classIds: [String!]
-  email: String!
+  email: String
   firstName: String!
   lastName: String!
   phoneNumber: String
@@ -820,6 +824,7 @@ input ExecuteImportInput {
 }
 
 type Family {
+  code: String
   createdAt: DateTime!
   guardians: [FamilyGuardianSummary!]!
   id: String!
@@ -959,7 +964,9 @@ enum GuardianRelationship {
 
 """Tipo de entidad a importar desde archivo"""
 enum ImportEntityType {
+  FAMILY
   STUDENT
+  TEACHER
 }
 
 type ImportTemplateFile {
@@ -989,6 +996,7 @@ type ImportValidationResult {
   invalidRows: Int!
   totalRows: Int!
   validRows: Int!
+  warnings: [ImportValidationError!]!
 }
 
 type Invoice {
@@ -1284,6 +1292,7 @@ type Mutation {
     input: UpdateAfipSalesPointInput!
   ): AfipSalesPoint!
   updateClass(updateClassInput: UpdateClassInput!): Class!
+  updateFamily(updateFamilyInput: UpdateFamilyInput!): Family!
   updateGuardian(updateGuardianInput: UpdateGuardianInput!): Guardian!
   updateGuardianBilling(input: UpdateGuardianBillingInput!): Guardian!
   updateGuardianContactInfo(input: UpdateGuardianContactInfoInput!): Guardian!
@@ -1562,8 +1571,8 @@ type Query {
   classes(filter: ClassesFilterInput): PaginatedClasses!
   classesByStudent(studentId: String!): [Class!]!
 
-  """Descarga la plantilla XLSX para importar alumnos"""
-  downloadStudentImportTemplate: ImportTemplateFile!
+  """Descarga la plantilla XLSX para importar la entidad indicada"""
+  downloadImportTemplate(entityType: ImportEntityType!): ImportTemplateFile!
   families(limit: Int = 10, page: Int = 1, search: String): PaginatedFamilies!
 
   """Familias con charges pendientes para facturación masiva (paginado)"""
@@ -1681,7 +1690,7 @@ type Student {
   createdAt: DateTime!
   documentNumber: String
   documentType: DocumentType
-  email: String!
+  email: String
   familyId: String
   firstName: String!
   gender: Gender
@@ -1973,6 +1982,12 @@ input UpdateClassInput {
   programId: String
   startDate: DateTime
   teacherId: String
+}
+
+input UpdateFamilyInput {
+  code: String
+  id: String!
+  name: String
 }
 
 input UpdateGuardianBillingInput {

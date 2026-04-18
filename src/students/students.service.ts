@@ -57,6 +57,8 @@ export class StudentsService {
       ) {
         throw new BadRequestException("El email ya está registrado");
       }
+      if (error instanceof BadRequestException) throw error;
+      this.logger.error("Error al crear el estudiante", error);
       throw new BadRequestException("Error al crear el estudiante");
     }
   }

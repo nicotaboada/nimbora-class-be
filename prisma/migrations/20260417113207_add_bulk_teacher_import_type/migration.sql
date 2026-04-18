@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "BulkOperationType" ADD VALUE 'BULK_TEACHER_IMPORT';

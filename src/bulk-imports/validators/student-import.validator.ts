@@ -8,25 +8,30 @@ import {
   ParsedRow,
   ValidationRunResult,
 } from "./import-validator.interface";
+import { normalizeEmail } from "../utils/normalize-email.util";
 import {
-  parseCountryDropdownLabel,
-  isValidCountryCode,
-} from "../../common/constants/countries";
+  normalizePhoneCountryCode,
+  normalizePhoneNumber,
+} from "../utils/normalize-phone.util";
+import { normalizeBirthDate } from "../utils/normalize-birth-date.util";
+import { normalizeGender } from "../utils/normalize-gender.util";
 import {
-  parsePhoneCodeDropdownLabel,
-  isValidPhoneCode,
-} from "../../common/constants/phone-codes";
-import { parseDocumentTypeLabel } from "../../common/constants/document-types";
-import { parseGenderLabel } from "../../common/constants/genders";
-import { DocumentType, Gender } from "../../common/enums";
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_REGEX = /^[()\d\s-]+$/;
-const MIN_BIRTH_YEAR = 1900;
+  normalizeDocumentType,
+  normalizeDocumentNumber,
+} from "../utils/normalize-document.util";
+import { normalizeCountry } from "../utils/normalize-country.util";
 
 interface NormalizeResult {
   normalized?: StudentImportRow;
+  classCodes: string[];
+  familyCode: string | null;
   errors: ImportValidationError[];
+}
+
+interface ClassLookup {
+  id: string;
+  capacity: number | null;
+  currentCount: number;
 }
 
 @Injectable()
@@ -37,13 +42,23 @@ export class StudentImportValidator
 
   constructor(private readonly prisma: PrismaService) {}
 
+  serialize(row: StudentImportRow): Record<string, unknown> {
+    return {
+      ...row,
+      birthDate: row.birthDate ? row.birthDate.toISOString() : null,
+    };
+  }
+
   async validate(
     parsedRows: ParsedRow[],
     academyId: string,
   ): Promise<ValidationRunResult<StudentImportRow>> {
     const errors: ImportValidationError[] = [];
+    const warnings: ImportValidationError[] = [];
     const normalizedRows: StudentImportRow[] = [];
     const validRowNumbers: number[] = [];
+    const rowClassCodes: string[][] = [];
+    const rowFamilyCodes: (string | null)[] = [];
     const emailToRows = new Map<string, number[]>();
 
     for (const parsed of parsedRows) {
@@ -51,14 +66,115 @@ export class StudentImportValidator
       errors.push(...result.errors);
 
       if (result.normalized) {
-        const emailKey = result.normalized.email.toLowerCase();
-        const existing = emailToRows.get(emailKey) ?? [];
-        existing.push(parsed.rowNumber);
-        emailToRows.set(emailKey, existing);
+        if (result.normalized.email) {
+          const emailKey = result.normalized.email.toLowerCase();
+          const existing = emailToRows.get(emailKey) ?? [];
+          existing.push(parsed.rowNumber);
+          emailToRows.set(emailKey, existing);
+        }
 
         normalizedRows.push(result.normalized);
         validRowNumbers.push(parsed.rowNumber);
+        rowClassCodes.push(result.classCodes);
+        rowFamilyCodes.push(result.familyCode);
       }
+    }
+
+    // Resolve class codes against the DB (single query) and attach classIds
+    // to each normalized row. Missing codes become row errors.
+    const allCodes = [...new Set(rowClassCodes.flat())];
+    const codeToClass = new Map<string, ClassLookup>();
+    if (allCodes.length > 0) {
+      const classes = await this.prisma.class.findMany({
+        where: { academyId, code: { in: allCodes } },
+        select: {
+          id: true,
+          code: true,
+          capacity: true,
+          _count: { select: { students: true } },
+        },
+      });
+      for (const c of classes) {
+        if (c.code) {
+          codeToClass.set(c.code, {
+            id: c.id,
+            capacity: c.capacity,
+            currentCount: c._count.students,
+          });
+        }
+      }
+    }
+
+    const pendingByClassId = new Map<string, number>();
+    for (const [i, normalizedRow] of normalizedRows.entries()) {
+      const codes = rowClassCodes[i];
+      const rowNumber = validRowNumbers[i];
+      const classIds: string[] = [];
+      for (const code of codes) {
+        const match = codeToClass.get(code);
+        if (!match) {
+          errors.push({
+            row: rowNumber,
+            column: "Códigos de clase (separados por coma)",
+            message: `El código '${code}' no existe en la academia`,
+          });
+          continue;
+        }
+        classIds.push(match.id);
+        pendingByClassId.set(
+          match.id,
+          (pendingByClassId.get(match.id) ?? 0) + 1,
+        );
+      }
+      normalizedRow.classIds = classIds;
+    }
+
+    // Capacity warnings (non-blocking)
+    for (const [classId, pending] of pendingByClassId.entries()) {
+      const info = [...codeToClass.values()].find((c) => c.id === classId);
+      if (!info || info.capacity == null) continue;
+      const projected = info.currentCount + pending;
+      if (projected > info.capacity) {
+        const code =
+          [...codeToClass.entries()].find(([, c]) => c.id === classId)?.[0] ??
+          "";
+        warnings.push({
+          row: 0,
+          column: "Códigos de clase (separados por coma)",
+          message: `La clase '${code}' tendría ${projected} alumnos pero su capacidad es ${info.capacity}`,
+        });
+      }
+    }
+
+    // Resolve family codes against the DB (single query) and attach familyId.
+    // Missing codes become row errors.
+    const allFamilyCodes = [
+      ...new Set(rowFamilyCodes.filter((c): c is string => c !== null)),
+    ];
+    const codeToFamilyId = new Map<string, string>();
+    if (allFamilyCodes.length > 0) {
+      const families = await this.prisma.family.findMany({
+        where: { academyId, code: { in: allFamilyCodes } },
+        select: { id: true, code: true },
+      });
+      for (const f of families) {
+        if (f.code) codeToFamilyId.set(f.code, f.id);
+      }
+    }
+
+    for (const [i, normalizedRow] of normalizedRows.entries()) {
+      const familyCode = rowFamilyCodes[i];
+      if (!familyCode) continue;
+      const familyId = codeToFamilyId.get(familyCode);
+      if (!familyId) {
+        errors.push({
+          row: validRowNumbers[i],
+          column: "Código de familia",
+          message: `La familia con código '${familyCode}' no existe en la academia`,
+        });
+        continue;
+      }
+      normalizedRow.familyId = familyId;
     }
 
     // Intra-file duplicates
@@ -119,10 +235,10 @@ export class StudentImportValidator
       }
     }
 
-    // Filter out rows whose email collided (intra-file or DB) from the normalized set
+    // Drop rows that have any blocking error (email collision or unresolved class code).
     const invalidatedRows = new Set<number>();
     for (const err of errors) {
-      if (err.column === "Email") invalidatedRows.add(err.row);
+      invalidatedRows.add(err.row);
     }
     const finalNormalized: StudentImportRow[] = [];
     const finalValidRowNumbers: number[] = [];
@@ -138,13 +254,15 @@ export class StudentImportValidator
       normalizedRows: finalNormalized,
       validRowNumbers: finalValidRowNumbers,
       errors,
+      warnings,
     };
   }
 
   private normalizeRow(row: ParsedRow): NormalizeResult {
     const errors: ImportValidationError[] = [];
-    const get = (header: string): string | null => {
-      const raw = row.cells[header];
+    // Cells are indexed by ColumnSpec.key (e.g. "firstName"), not by header.
+    const get = (key: string): string | null => {
+      const raw = row.cells[key];
       if (raw === null || raw === undefined) return null;
       const trimmed = raw.trim();
       return trimmed.length === 0 ? null : trimmed;
@@ -155,144 +273,82 @@ export class StudentImportValidator
     };
 
     // Required
-    const firstName = get("Nombre");
+    const firstName = get("firstName");
     if (!firstName) addError("Nombre", "Campo requerido");
     else if (firstName.length > 100)
       addError("Nombre", "Máximo 100 caracteres");
 
-    const lastName = get("Apellido");
+    const lastName = get("lastName");
     if (!lastName) addError("Apellido", "Campo requerido");
     else if (lastName.length > 100)
       addError("Apellido", "Máximo 100 caracteres");
 
-    const rawEmail = get("Email");
-    let email: string | null = null;
-    if (!rawEmail) {
-      addError("Email", "Campo requerido");
-    } else if (EMAIL_REGEX.test(rawEmail)) {
-      email = rawEmail.toLowerCase();
-    } else {
-      addError("Email", "Formato inválido");
-    }
+    const email = normalizeEmail(get("email"), "Email", addError);
 
-    // Optional — phone country code (dropdown label → "+XX")
-    const rawPhoneCode = get("Código país teléfono");
-    let phoneCountryCode: string | null = null;
-    if (rawPhoneCode) {
-      const parsedCode = parsePhoneCodeDropdownLabel(rawPhoneCode);
-      if (parsedCode) {
-        phoneCountryCode = parsedCode;
-      } else if (
-        rawPhoneCode.startsWith("+") &&
-        isValidPhoneCode(rawPhoneCode)
-      ) {
-        phoneCountryCode = rawPhoneCode;
-      } else {
-        addError("Código país teléfono", "Valor inválido");
-      }
-    }
+    const phoneCountryCode = normalizePhoneCountryCode(
+      get("phoneCountryCode"),
+      "Código país teléfono",
+      addError,
+    );
 
-    // Optional — phone number (only digits and visual separators; the "+"
-    // country prefix belongs in the Código país teléfono column).
-    const rawPhone = get("Teléfono");
-    let phoneNumber: string | null = null;
-    if (rawPhone) {
-      if (rawPhone.includes("+")) {
-        addError(
-          "Teléfono",
-          "Solo números (el código de país va en la columna 'Código país teléfono')",
-        );
-      } else if (PHONE_REGEX.test(rawPhone)) {
-        phoneNumber = rawPhone.replaceAll(/[\s()-]/g, "");
-      } else {
-        addError("Teléfono", "Solo se permiten números");
-      }
-    }
+    const phoneNumber = normalizePhoneNumber(
+      get("phoneNumber"),
+      "Teléfono",
+      addError,
+    );
 
-    // Optional — birth date (DD/MM/AAAA)
-    const rawBirthDate = get("Fecha de nacimiento (DD/MM/AAAA)");
-    let birthDate: Date | null = null;
-    if (rawBirthDate) {
-      const parsedDate = parseDateDDMMYYYY(rawBirthDate);
-      if (!parsedDate) {
-        addError(
-          "Fecha de nacimiento (DD/MM/AAAA)",
-          "Formato inválido, usar DD/MM/AAAA",
-        );
-      } else if (parsedDate > new Date()) {
-        addError(
-          "Fecha de nacimiento (DD/MM/AAAA)",
-          "La fecha no puede ser futura",
-        );
-      } else if (parsedDate.getUTCFullYear() < MIN_BIRTH_YEAR) {
-        addError(
-          "Fecha de nacimiento (DD/MM/AAAA)",
-          `El año no puede ser anterior a ${MIN_BIRTH_YEAR}`,
-        );
-      } else {
-        birthDate = parsedDate;
-      }
-    }
+    const birthDate = normalizeBirthDate(
+      get("birthDate"),
+      "Fecha de nacimiento (DD/MM/AAAA)",
+      addError,
+    );
 
-    // Optional — gender (dropdown label → enum)
-    const rawGender = get("Género");
-    let gender: Gender | null = null;
-    if (rawGender) {
-      gender = parseGenderLabel(rawGender);
-      if (!gender) addError("Género", "Valor inválido");
-    }
+    const gender = normalizeGender(get("gender"), "Género", addError);
 
-    // Optional — document type (dropdown label → enum)
-    const rawDocType = get("Tipo de documento");
-    let documentType: DocumentType | null = null;
-    if (rawDocType) {
-      documentType = parseDocumentTypeLabel(rawDocType);
-      if (!documentType) addError("Tipo de documento", "Valor inválido");
-    }
+    const documentType = normalizeDocumentType(
+      get("documentType"),
+      "Tipo de documento",
+      addError,
+    );
 
-    // Optional — document number (validation depends on documentType)
-    const rawDocNumber = get("Número de documento");
-    let documentNumber: string | null = null;
-    if (rawDocNumber) {
-      if (
-        documentType === DocumentType.DNI &&
-        !/^\d{7,8}$/.test(rawDocNumber)
-      ) {
-        addError("Número de documento", "DNI debe tener 7 u 8 dígitos");
-      } else if (
-        documentType === DocumentType.OTHER &&
-        rawDocNumber.length > 40
-      ) {
-        addError("Número de documento", "Máximo 40 caracteres");
-      } else {
-        documentNumber = rawDocNumber;
-      }
-    }
+    const documentNumber = normalizeDocumentNumber(
+      get("documentNumber"),
+      documentType,
+      "Número de documento",
+      addError,
+    );
 
-    // Optional — country (dropdown label → ISO code)
-    const rawCountry = get("País");
-    let country: string | null = null;
-    if (rawCountry) {
-      const parsedCountry = parseCountryDropdownLabel(rawCountry);
-      if (parsedCountry) {
-        country = parsedCountry;
-      } else if (isValidCountryCode(rawCountry)) {
-        country = rawCountry;
-      } else {
-        addError("País", "Valor inválido");
-      }
-    }
+    const country = normalizeCountry(get("country"), "País", addError);
 
-    const address = get("Dirección");
-    const city = get("Ciudad");
-    const postalCode = get("Código postal");
+    const address = get("address");
+    const city = get("city");
+    const postalCode = get("postalCode");
+
+    // Optional — class codes (comma-separated). Split, trim, dedupe intra-row.
+    // Actual existence / capacity are resolved globally in validate().
+    const rawClassCodes = get("classCodes");
+    const classCodes: string[] = rawClassCodes
+      ? [
+          ...new Set(
+            rawClassCodes
+              .split(",")
+              .map((c) => c.trim())
+              .filter((c) => c.length > 0),
+          ),
+        ]
+      : [];
+
+    // Optional — family code (single). Existence is resolved globally.
+    const familyCode = get("familyCode");
 
     if (errors.length > 0) {
-      return { errors };
+      return { classCodes, familyCode, errors };
     }
 
     return {
       errors,
+      classCodes,
+      familyCode,
       normalized: {
         firstName: firstName,
         lastName: lastName,
@@ -307,27 +363,9 @@ export class StudentImportValidator
         city,
         country,
         postalCode,
+        classIds: [],
+        familyId: null,
       },
     };
   }
-}
-
-/** Parse DD/MM/YYYY into a Date at UTC midnight, or null if malformed. */
-function parseDateDDMMYYYY(raw: string): Date | null {
-  const match = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!match) return null;
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = Number(match[3]);
-  if (month < 1 || month > 12) return null;
-  if (day < 1 || day > 31) return null;
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  ) {
-    return null;
-  }
-  return date;
 }

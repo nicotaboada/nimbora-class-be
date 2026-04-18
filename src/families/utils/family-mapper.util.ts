@@ -57,6 +57,7 @@ export function mapFamilyToEntity(prismaFamily: FamilyWithRelations): Family {
   return {
     id: prismaFamily.id,
     name: prismaFamily.name,
+    code: prismaFamily.code ?? undefined,
     membersCount: students.length + guardians.length,
     students,
     guardians,

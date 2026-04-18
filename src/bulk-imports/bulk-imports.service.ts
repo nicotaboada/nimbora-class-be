@@ -2,17 +2,22 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  Inject,
 } from "@nestjs/common";
 import { tasks } from "@trigger.dev/sdk";
 import { PrismaService } from "../prisma/prisma.service";
 import { XlsxParserService } from "./services/xlsx-parser.service";
 import { TemplateGeneratorService } from "./services/template-generator.service";
-import { StudentImportValidator } from "./validators/student-import.validator";
 import {
-  STUDENT_IMPORT_COLUMNS,
-  STUDENT_IMPORT_SHEET_NAME,
+  ImportValidator,
+  IMPORT_VALIDATORS,
+  ParsedRow,
+} from "./validators/import-validator.interface";
+import {
   formatColumnHeader,
-} from "./config/student-import.config";
+  EntityImportConfig,
+} from "./config/entity-import-config";
+import { getEntityImportConfig } from "./config/entity-import-registry";
 import { ImportEntityType } from "./enums/import-entity-type.enum";
 import { ImportValidationResult } from "./entities/import-validation-result.entity";
 import { ImportTemplateFile } from "./entities/import-template-file.entity";
@@ -21,32 +26,31 @@ import { ExecuteImportInput } from "./dto/execute-import.input";
 import { BulkOperation } from "../bulk-operations/entities/bulk-operation.entity";
 import { BulkOperationType } from "../bulk-operations/enums/bulk-operation-type.enum";
 import { BulkOperationStatus } from "../bulk-operations/enums/bulk-operation-status.enum";
-import type { bulkImportStudentsTask } from "../trigger/bulk-import-students";
-import { StudentImportRow } from "./types/student-import.types";
 
-const TEMPLATE_FILENAME = "plantilla-importar-alumnos.xlsx";
 const XLSX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-/** Same shape as StudentImportRow but with dates as ISO strings (for JSON). */
-export interface SerializableStudentRow
-  extends Omit<StudentImportRow, "birthDate"> {
-  birthDate: string | null;
-}
-
 @Injectable()
 export class BulkImportsService {
+  private readonly validators: Map<ImportEntityType, ImportValidator<unknown>>;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly xlsxParser: XlsxParserService,
     private readonly templateGenerator: TemplateGeneratorService,
-    private readonly studentValidator: StudentImportValidator,
-  ) {}
+    @Inject(IMPORT_VALIDATORS)
+    validators: ImportValidator<unknown>[],
+  ) {
+    this.validators = new Map(validators.map((v) => [v.entityType, v]));
+  }
 
-  async downloadStudentImportTemplate(): Promise<ImportTemplateFile> {
-    const buffer = await this.templateGenerator.generateStudentTemplate();
+  async downloadImportTemplate(
+    entityType: ImportEntityType,
+  ): Promise<ImportTemplateFile> {
+    const config = getEntityImportConfig(entityType);
+    const buffer = await this.templateGenerator.generate(config);
     return {
-      filename: TEMPLATE_FILENAME,
+      filename: config.templateFilename,
       mimeType: XLSX_MIME_TYPE,
       fileBase64: buffer.toString("base64"),
     };
@@ -56,30 +60,19 @@ export class BulkImportsService {
     input: ValidateImportInput,
     academyId: string,
   ): Promise<ImportValidationResult> {
-    this.assertSupportedEntity(input.entityType);
+    const config = getEntityImportConfig(input.entityType);
+    const validator = this.getValidator(input.entityType);
 
-    const parsedRows = await this.xlsxParser.parse(
-      input.fileBase64,
-      STUDENT_IMPORT_SHEET_NAME,
-      STUDENT_IMPORT_COLUMNS.map((c) => ({
-        key: c.header,
-        header: formatColumnHeader(c),
-        example: c.example,
-      })),
-    );
-
-    if (parsedRows.length === 0) {
-      throw new BadRequestException("El archivo no tiene filas de datos");
-    }
-
-    const { totalRows, validRowNumbers, errors } =
-      await this.studentValidator.validate(parsedRows, academyId);
+    const parsedRows = await this.parseFile(input.fileBase64, config);
+    const { totalRows, validRowNumbers, errors, warnings } =
+      await validator.validate(parsedRows, academyId);
 
     return {
       totalRows,
       validRows: validRowNumbers.length,
       invalidRows: totalRows - validRowNumbers.length,
       errors,
+      warnings,
     };
   }
 
@@ -87,26 +80,15 @@ export class BulkImportsService {
     input: ExecuteImportInput,
     academyId: string,
   ): Promise<BulkOperation> {
-    this.assertSupportedEntity(input.entityType);
+    const config = getEntityImportConfig(input.entityType);
+    const validator = this.getValidator(input.entityType);
 
-    const parsedRows = await this.xlsxParser.parse(
-      input.fileBase64,
-      STUDENT_IMPORT_SHEET_NAME,
-      STUDENT_IMPORT_COLUMNS.map((c) => ({
-        key: c.header,
-        header: formatColumnHeader(c),
-        example: c.example,
-      })),
-    );
-
-    if (parsedRows.length === 0) {
-      throw new BadRequestException("El archivo no tiene filas de datos");
-    }
+    const parsedRows = await this.parseFile(input.fileBase64, config);
 
     // Re-validate server-side for safety: the client-side dry-run result
     // could be stale if other admins added students between validate and execute.
     const { totalRows, normalizedRows, validRowNumbers, errors } =
-      await this.studentValidator.validate(parsedRows, academyId);
+      await validator.validate(parsedRows, academyId);
 
     if (errors.length > 0) {
       throw new BadRequestException(
@@ -114,41 +96,30 @@ export class BulkImportsService {
       );
     }
 
-    const serializableRows: SerializableStudentRow[] = normalizedRows.map(
-      (row) => ({
-        ...row,
-        birthDate: row.birthDate ? row.birthDate.toISOString() : null,
-      }),
-    );
+    const serializedRows = normalizedRows.map((row, idx) => ({
+      ...validator.serialize(row),
+      rowNumber: validRowNumbers[idx],
+    }));
 
     const operation = await this.prisma.bulkOperation.create({
       data: {
-        type: BulkOperationType.BULK_STUDENT_IMPORT,
+        type: config.bulkOperationType,
         status: BulkOperationStatus.PENDING,
         academyId,
         totalItems: totalRows,
         params: {
           entityType: input.entityType,
-          rows: serializableRows.map((row, idx) => ({
-            ...row,
-            rowNumber: validRowNumbers[idx],
-          })),
+          rows: serializedRows,
         },
         results: [],
       },
     });
 
-    const handle = await tasks.trigger<typeof bulkImportStudentsTask>(
-      "bulk-import-students",
-      {
-        operationId: operation.id,
-        academyId,
-        rows: serializableRows.map((row, idx) => ({
-          ...row,
-          rowNumber: validRowNumbers[idx],
-        })),
-      },
-    );
+    const handle = await tasks.trigger(config.triggerTaskId, {
+      operationId: operation.id,
+      academyId,
+      rows: serializedRows,
+    });
 
     const updated = await this.prisma.bulkOperation.update({
       where: { id: operation.id },
@@ -173,12 +144,35 @@ export class BulkImportsService {
     return this.mapToEntity(operation);
   }
 
-  private assertSupportedEntity(entityType: ImportEntityType): void {
-    switch (entityType) {
-      case ImportEntityType.STUDENT: {
-        return;
-      }
+  private async parseFile(
+    fileBase64: string,
+    config: EntityImportConfig,
+  ): Promise<ParsedRow[]> {
+    const parsedRows = await this.xlsxParser.parse(
+      fileBase64,
+      config.sheetName,
+      config.columns.map((c) => ({
+        key: c.key,
+        header: formatColumnHeader(c),
+        example: c.example,
+      })),
+    );
+
+    if (parsedRows.length === 0) {
+      throw new BadRequestException("El archivo no tiene filas de datos");
     }
+
+    return parsedRows;
+  }
+
+  private getValidator(entityType: ImportEntityType): ImportValidator<unknown> {
+    const validator = this.validators.get(entityType);
+    if (!validator) {
+      throw new BadRequestException(
+        `No hay validador registrado para la entidad ${entityType}`,
+      );
+    }
+    return validator;
   }
 
   private mapToEntity(operation: {

@@ -1,5 +1,5 @@
 import { InputType, Field } from "@nestjs/graphql";
-import { IsString, MinLength, MaxLength } from "class-validator";
+import { IsOptional, IsString, MinLength, MaxLength } from "class-validator";
 
 @InputType()
 export class CreateFamilyInput {
@@ -8,4 +8,10 @@ export class CreateFamilyInput {
   @MinLength(1)
   @MaxLength(200)
   name: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  code?: string;
 }

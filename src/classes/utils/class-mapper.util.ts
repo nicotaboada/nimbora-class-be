@@ -9,7 +9,7 @@ import { mapProgramToEntity } from "../../programs/utils/program-mapper.util";
 
 type PrismaClassWithRelations = PrismaClass & {
   program: PrismaProgram;
-  teacher: PrismaTeacher;
+  teacher: PrismaTeacher | null;
   students?: {
     id: string;
   }[];
@@ -23,9 +23,11 @@ export function mapClassToEntity(
     academyId: prismaClass.academyId,
     name: prismaClass.name,
     program: mapProgramToEntity(prismaClass.program),
-    teacher: mapTeacherToEntity(prismaClass.teacher),
-    startDate: prismaClass.startDate,
-    endDate: prismaClass.endDate,
+    teacher: prismaClass.teacher
+      ? mapTeacherToEntity(prismaClass.teacher)
+      : undefined,
+    startDate: prismaClass.startDate ?? undefined,
+    endDate: prismaClass.endDate ?? undefined,
     capacity: prismaClass.capacity,
     code: prismaClass.code,
     description: prismaClass.description,

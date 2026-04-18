@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Class" ALTER COLUMN "startDate" DROP NOT NULL;
+ALTER TABLE "Class" ALTER COLUMN "endDate" DROP NOT NULL;

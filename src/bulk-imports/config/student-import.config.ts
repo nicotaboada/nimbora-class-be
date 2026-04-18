@@ -12,15 +12,19 @@ import {
 } from "../../common/constants/document-types";
 import { GENDER_OPTIONS, GENDER_LABELS } from "../../common/constants/genders";
 import { DocumentType, Gender } from "../../common/enums";
+import { BulkOperationType } from "../../bulk-operations/enums/bulk-operation-type.enum";
+import { ImportEntityType } from "../enums/import-entity-type.enum";
+import type { StudentImportRow } from "../types/student-import.types";
+import type { EntityImportConfig, ImportColumn } from "./entity-import-config";
 
-export interface StudentImportColumn {
-  key: keyof import("../types/student-import.types").StudentImportRow;
-  header: string;
-  required: boolean;
-  dropdown?: string[];
-  widthChars: number;
-  example: string;
-}
+// Column keys index ParsedRow.cells (the raw XLSX input), not StudentImportRow
+// directly. Most match a normalized field, but some (e.g. `classCodes`,
+// `familyCode`) hold raw text that the validator resolves into another field
+// (`classIds`, `familyId`).
+type StudentColumnKey =
+  | keyof Omit<StudentImportRow, "classIds" | "familyId">
+  | "classCodes"
+  | "familyCode";
 
 // Pick Argentina as the example country/phone because it matches the primary
 // audience. Fall back to empty string if the list doesn't contain it (e.g.
@@ -39,7 +43,7 @@ const EXAMPLE_PHONE_LABEL = EXAMPLE_PHONE_OPTION
  * Dropdowns pull their options from backend constants so template
  * generation and validation always read from the same source.
  */
-export const STUDENT_IMPORT_COLUMNS: StudentImportColumn[] = [
+export const STUDENT_IMPORT_COLUMNS: ImportColumn<StudentColumnKey>[] = [
   {
     key: "firstName",
     header: "Nombre",
@@ -57,7 +61,7 @@ export const STUDENT_IMPORT_COLUMNS: StudentImportColumn[] = [
   {
     key: "email",
     header: "Email",
-    required: true,
+    required: false,
     widthChars: 32,
     example: "juan.perez@example.com",
   },
@@ -135,10 +139,29 @@ export const STUDENT_IMPORT_COLUMNS: StudentImportColumn[] = [
     widthChars: 14,
     example: "C1043",
   },
+  {
+    key: "classCodes",
+    header: "Códigos de clase (separados por coma)",
+    required: false,
+    widthChars: 32,
+    example: "MAT-1,ING-2",
+  },
+  {
+    key: "familyCode",
+    header: "Código de familia",
+    required: false,
+    widthChars: 20,
+    example: "PEREZ-01",
+  },
 ];
 
 export const STUDENT_IMPORT_SHEET_NAME = "Alumnos";
 
-export function formatColumnHeader(col: StudentImportColumn): string {
-  return `${col.header} (${col.required ? "Requerido" : "Opcional"})`;
-}
+export const STUDENT_IMPORT_CONFIG: EntityImportConfig<StudentColumnKey> = {
+  entityType: ImportEntityType.STUDENT,
+  sheetName: STUDENT_IMPORT_SHEET_NAME,
+  templateFilename: "plantilla-importar-alumnos.xlsx",
+  columns: STUDENT_IMPORT_COLUMNS,
+  bulkOperationType: BulkOperationType.BULK_STUDENT_IMPORT,
+  triggerTaskId: "bulk-import-students",
+};

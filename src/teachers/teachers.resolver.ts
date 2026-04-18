@@ -27,7 +27,7 @@ export class TeachersResolver {
   constructor(
     private readonly teachersService: TeachersService,
     private readonly classesService: ClassesService,
-  ) { }
+  ) {}
 
   @Mutation(() => Teacher)
   async createTeacher(

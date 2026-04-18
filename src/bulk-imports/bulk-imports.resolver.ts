@@ -5,6 +5,7 @@ import { ValidateImportInput } from "./dto/validate-import.input";
 import { ExecuteImportInput } from "./dto/execute-import.input";
 import { ImportValidationResult } from "./entities/import-validation-result.entity";
 import { ImportTemplateFile } from "./entities/import-template-file.entity";
+import { ImportEntityType } from "./enums/import-entity-type.enum";
 import { BulkOperation } from "../bulk-operations/entities/bulk-operation.entity";
 import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -16,10 +17,13 @@ export class BulkImportsResolver {
   constructor(private readonly bulkImportsService: BulkImportsService) {}
 
   @Query(() => ImportTemplateFile, {
-    description: "Descarga la plantilla XLSX para importar alumnos",
+    description: "Descarga la plantilla XLSX para importar la entidad indicada",
   })
-  downloadStudentImportTemplate(): Promise<ImportTemplateFile> {
-    return this.bulkImportsService.downloadStudentImportTemplate();
+  downloadImportTemplate(
+    @Args("entityType", { type: () => ImportEntityType })
+    entityType: ImportEntityType,
+  ): Promise<ImportTemplateFile> {
+    return this.bulkImportsService.downloadImportTemplate(entityType);
   }
 
   @Mutation(() => ImportValidationResult, {

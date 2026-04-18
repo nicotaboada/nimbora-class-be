@@ -5,6 +5,7 @@ import { PaginatedFamilies } from "./dto/paginated-families.output";
 import { Family } from "./entities/family.entity";
 import { Guardian } from "./entities/guardian.entity";
 import { CreateFamilyInput } from "./dto/create-family.input";
+import { UpdateFamilyInput } from "./dto/update-family.input";
 import { CreateGuardianInput } from "./dto/create-guardian.input";
 import { UpdateGuardianInput } from "./dto/update-guardian.input";
 import { UpdateGuardianNotificationsInput } from "./dto/update-guardian-notifications.input";
@@ -52,6 +53,14 @@ export class FamiliesResolver {
     @CurrentUser() user: User,
   ) {
     return this.familiesService.create(input, user.academyId);
+  }
+
+  @Mutation(() => Family)
+  async updateFamily(
+    @Args("updateFamilyInput") input: UpdateFamilyInput,
+    @CurrentUser() user: User,
+  ) {
+    return this.familiesService.updateFamily(input, user.academyId);
   }
 
   @Mutation(() => Guardian)

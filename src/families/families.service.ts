@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { mapFamilyToEntity } from "./utils/family-mapper.util";
 import { mapGuardianToEntity } from "./utils/guardian-mapper.util";
 import { CreateFamilyInput } from "./dto/create-family.input";
+import { UpdateFamilyInput } from "./dto/update-family.input";
 import { CreateGuardianInput } from "./dto/create-guardian.input";
 import { UpdateGuardianInput } from "./dto/update-guardian.input";
 import { UpdateGuardianNotificationsInput } from "./dto/update-guardian-notifications.input";
@@ -121,6 +122,7 @@ export class FamiliesService {
     const family = await this.prisma.family.create({
       data: {
         name: input.name,
+        code: input.code,
         academyId,
       },
       include: {
@@ -155,6 +157,60 @@ export class FamiliesService {
     });
 
     return mapFamilyToEntity(family);
+  }
+
+  async updateFamily(input: UpdateFamilyInput, academyId: string) {
+    const existing = await this.prisma.family.findUnique({
+      where: { id: input.id },
+    });
+    assertOwnership(existing, academyId, "Family");
+
+    const data: Prisma.FamilyUpdateInput = {};
+
+    if (input.name !== undefined) {
+      data.name = input.name;
+    }
+
+    if (input.code !== undefined) {
+      const trimmed = input.code.trim();
+      data.code = trimmed ? trimmed : null;
+    }
+
+    try {
+      const family = await this.prisma.family.update({
+        where: { id: input.id },
+        data,
+        include: {
+          guardians: true,
+          students: {
+            include: {
+              classStudents: {
+                include: {
+                  class: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      return mapFamilyToEntity(family);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new BadRequestException(
+          "Ya existe otra familia con ese código en esta academia",
+        );
+      }
+      throw error;
+    }
   }
 
   async createGuardian(input: CreateGuardianInput, academyId: string) {

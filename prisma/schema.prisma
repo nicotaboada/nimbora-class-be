@@ -137,7 +137,7 @@ model Student {
   id          String   @id @default(uuid())
   firstName   String
   lastName    String
-  email       String
+  email       String?
   phoneNumber String?
   status      Status   @default(ENABLED)
 
@@ -226,6 +226,7 @@ model Family {
   academy   Academy  @relation(fields: [academyId], references: [id])
 
   name      String
+  code      String?
   tags      String[]
   status    Status   @default(ENABLED)
 
@@ -236,6 +237,7 @@ model Family {
   students  Student[]
   invoices  Invoice[]
 
+  @@unique([academyId, code])
   @@index([academyId])
   // NOTA: Agregar GIN index manualmente en migration SQL:
   // CREATE INDEX "Family_tags_idx" ON "Family" USING GIN ("tags");
@@ -309,10 +311,10 @@ model Class {
   name      String
   programId String
   program   Program  @relation(fields: [programId], references: [id])
-  teacherId String
-  teacher   Teacher  @relation(fields: [teacherId], references: [id])
-  startDate DateTime
-  endDate   DateTime
+  teacherId String?
+  teacher   Teacher? @relation(fields: [teacherId], references: [id])
+  startDate DateTime?
+  endDate   DateTime?
   capacity  Int?
   code      String?
   description String?
@@ -325,6 +327,7 @@ model Class {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([academyId, code])
   @@index([academyId])
   @@index([programId])
   @@index([teacherId])
@@ -817,6 +820,8 @@ enum BulkOperationType {
   BULK_AFIP
   BULK_FAMILY_INVOICE
   BULK_STUDENT_IMPORT
+  BULK_TEACHER_IMPORT
+  BULK_FAMILY_IMPORT
 }
 
 enum BulkOperationStatus {

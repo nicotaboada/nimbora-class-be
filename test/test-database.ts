@@ -38,7 +38,7 @@ export class TestPrismaService extends PrismaClient {
         ADD COLUMN IF NOT EXISTS "paidAmount" INTEGER NOT NULL DEFAULT 0,
         ADD COLUMN IF NOT EXISTS "balance" INTEGER NOT NULL DEFAULT 0;
       `);
-    } catch (e) {
+    } catch {
       // Columns might already exist
     }
   }

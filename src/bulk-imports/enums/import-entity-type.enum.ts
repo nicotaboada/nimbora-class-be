@@ -2,6 +2,8 @@ import { registerEnumType } from "@nestjs/graphql";
 
 export enum ImportEntityType {
   STUDENT = "STUDENT",
+  TEACHER = "TEACHER",
+  FAMILY = "FAMILY",
 }
 
 registerEnumType(ImportEntityType, {

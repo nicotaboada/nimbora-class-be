@@ -14,4 +14,7 @@ export class ImportValidationResult {
 
   @Field(() => [ImportValidationError])
   errors: ImportValidationError[];
+
+  @Field(() => [ImportValidationError])
+  warnings: ImportValidationError[];
 }

@@ -19,10 +19,10 @@ export class CreateStudentInput {
   @IsString()
   lastName: string;
 
-  @Field()
-  @IsNotEmpty({ message: "El email es requerido" })
+  @Field({ nullable: true })
+  @IsOptional()
   @IsEmail({}, { message: "El email debe tener un formato válido" })
-  email: string;
+  email?: string;
 
   @Field({ nullable: true })
   @IsOptional()

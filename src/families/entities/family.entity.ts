@@ -10,6 +10,9 @@ export class Family {
   @Field()
   name: string;
 
+  @Field({ nullable: true })
+  code?: string;
+
   @Field(() => Int)
   membersCount: number;
 

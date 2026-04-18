@@ -2,6 +2,7 @@ import { InputType, Field } from "@nestjs/graphql";
 import {
   IsString,
   IsOptional,
+  IsDate,
   MinLength,
   MaxLength,
   IsInt,
@@ -20,19 +21,30 @@ export class CreateClassInput {
   @IsString()
   programId: string;
 
-  @Field()
+  @Field({ nullable: true })
+  @IsOptional()
   @IsString()
-  teacherId: string;
+  teacherId?: string;
 
-  @Field()
-  startDate: Date;
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsDate()
+  startDate?: Date;
 
-  @Field()
-  endDate: Date;
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsDate()
+  endDate?: Date;
 
   @Field({ nullable: true })
   @IsOptional()
   @IsInt()
   @Min(1)
   capacity?: number;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  code?: string;
 }

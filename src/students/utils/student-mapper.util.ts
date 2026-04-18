@@ -18,7 +18,7 @@ export function mapStudentToEntity(prismaStudent: PrismaStudent): Student {
     academyId: prismaStudent.academyId,
     firstName: prismaStudent.firstName,
     lastName: prismaStudent.lastName,
-    email: prismaStudent.email,
+    email: prismaStudent.email ?? undefined,
     phoneNumber: prismaStudent.phoneNumber ?? undefined,
     birthDate: prismaStudent.birthDate ?? undefined,
     gender: prismaStudent.gender ? genderMap[prismaStudent.gender] : undefined,

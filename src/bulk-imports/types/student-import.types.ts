@@ -9,7 +9,7 @@ import { Gender, DocumentType } from "../../common/enums";
 export interface StudentImportRow {
   firstName: string;
   lastName: string;
-  email: string;
+  email: string | null;
   phoneCountryCode: string | null;
   phoneNumber: string | null;
   birthDate: Date | null;
@@ -20,12 +20,14 @@ export interface StudentImportRow {
   city: string | null;
   country: string | null;
   postalCode: string | null;
+  classIds: string[];
+  familyId: string | null;
 }
 
 export interface StudentImportResult {
   status: "imported" | "failed";
   row: number;
-  email: string;
+  email: string | null;
   studentId?: string;
   error?: string;
 }

@@ -56,7 +56,6 @@ export function resolveDocTipo(docType: string): number {
     case "DNI": {
       return 96;
     }
-    case "CONSUMIDOR_FINAL":
     default: {
       return 99;
     }

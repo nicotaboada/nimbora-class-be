@@ -361,10 +361,14 @@ export class ChargesService {
     const requiresInvoicingCharges = requiresInvoicingRaw
       .slice(0, 3)
       .map((c) => mapChargeToEntity(c, currentDate));
-    const invoicedCharges = invoicedRaw
-      .reverse()
-      .slice(0, 3)
-      .map((c) => mapChargeToEntity(c, currentDate));
+    const invoicedCharges: ReturnType<typeof mapChargeToEntity>[] = [];
+    for (
+      let i = invoicedRaw.length - 1;
+      i >= 0 && invoicedCharges.length < 3;
+      i--
+    ) {
+      invoicedCharges.push(mapChargeToEntity(invoicedRaw[i], currentDate));
+    }
     return {
       requiresInvoicingTotal,
       invoicedTotal,

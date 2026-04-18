@@ -111,8 +111,11 @@ function cleanCuit(cuit: string): string {
   return cuit.replaceAll(/[-\s]/g, "");
 }
 
-function ensureStringArray(result: string | string[]): string[] {
-  return Array.isArray(result) ? result : [result];
+function ensureStringArray(result: unknown): string[] {
+  if (Array.isArray(result)) {
+    return result.map((v) => (typeof v === "string" ? v : ""));
+  }
+  return typeof result === "string" ? [result] : [];
 }
 
 // ── Colors ────────────────────────────────────────────────────────────────────

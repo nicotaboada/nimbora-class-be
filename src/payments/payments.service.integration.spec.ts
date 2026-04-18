@@ -9,12 +9,33 @@ import {
   Charge,
   Fee,
   Invoice,
-  Payment,
-  StudentCredit,
   InvoiceStatus,
   ChargeStatus,
   PaymentMethod,
 } from "@prisma/client";
+
+function expectInvoice(
+  invoice: Partial<Invoice>,
+  expected: {
+    total?: number;
+    paidAmount?: number;
+    balance?: number;
+    status?: InvoiceStatus;
+  },
+) {
+  if (expected.total !== undefined) {
+    expect(invoice.total).toBe(expected.total);
+  }
+  if (expected.paidAmount !== undefined) {
+    expect(invoice.paidAmount).toBe(expected.paidAmount);
+  }
+  if (expected.balance !== undefined) {
+    expect(invoice.balance).toBe(expected.balance);
+  }
+  if (expected.status) {
+    expect(invoice.status).toBe(expected.status);
+  }
+}
 
 describe("PaymentsService Integration Tests", () => {
   let paymentsService: PaymentsService;
@@ -129,29 +150,6 @@ describe("PaymentsService Integration Tests", () => {
     });
 
     return { student, fee, charges, invoice };
-  }
-
-  function expectInvoice(
-    invoice: Partial<Invoice>,
-    expected: {
-      total?: number;
-      paidAmount?: number;
-      balance?: number;
-      status?: InvoiceStatus;
-    },
-  ) {
-    if (expected.total !== undefined) {
-      expect(invoice.total).toBe(expected.total);
-    }
-    if (expected.paidAmount !== undefined) {
-      expect(invoice.paidAmount).toBe(expected.paidAmount);
-    }
-    if (expected.balance !== undefined) {
-      expect(invoice.balance).toBe(expected.balance);
-    }
-    if (expected.status) {
-      expect(invoice.status).toBe(expected.status);
-    }
   }
 
   // ============================================================================
@@ -587,7 +585,7 @@ describe("PaymentsService Integration Tests", () => {
   // ============================================================================
 
   it("P12: voidPayment con overpay anula el crédito generado", async () => {
-    const { invoice, student } = await seedInvoiceWithCharges([1000, 2000]);
+    const { invoice } = await seedInvoiceWithCharges([1000, 2000]);
 
     await paymentsService.addPayment(
       {

@@ -40,6 +40,13 @@ function fmtDate(date: Date): string {
   });
 }
 
+function ensureStringArray(result: unknown): string[] {
+  if (Array.isArray(result)) {
+    return result.map((v) => (typeof v === "string" ? v : ""));
+  }
+  return typeof result === "string" ? [result] : [];
+}
+
 const DARK = [23, 23, 23] as const;
 const GRAY = [115, 115, 115] as const;
 const LIGHT = [229, 229, 229] as const;
@@ -117,7 +124,9 @@ export function generateInvoicePdf(invoice: InvoicePdfData): Buffer {
     leftY += 4.5;
   }
   if (invoice.recipientAddress) {
-    const wrapped = doc.splitTextToSize(invoice.recipientAddress, halfWidth);
+    const wrapped = ensureStringArray(
+      doc.splitTextToSize(invoice.recipientAddress, halfWidth),
+    );
     doc.text(wrapped, ML, leftY);
     leftY += wrapped.length * 4.5;
   }
@@ -160,7 +169,9 @@ export function generateInvoicePdf(invoice: InvoicePdfData): Buffer {
 
     const code = String(index + 1).padStart(3, "0");
     const maxDescW = colQty - colDesc - 4;
-    const descLines = doc.splitTextToSize(line.description || "—", maxDescW);
+    const descLines = ensureStringArray(
+      doc.splitTextToSize(line.description || "—", maxDescW),
+    );
 
     doc.text(code, colCod, y);
     doc.text(descLines, colDesc, y);
@@ -238,7 +249,9 @@ export function generateInvoicePdf(invoice: InvoicePdfData): Buffer {
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...DARK);
-    const noteLines = doc.splitTextToSize(invoice.publicNotes, contentWidth);
+    const noteLines = ensureStringArray(
+      doc.splitTextToSize(invoice.publicNotes, contentWidth),
+    );
     doc.text(noteLines, ML, y);
   }
 

@@ -25,7 +25,6 @@ describe("BulkOperationsService (Integration)", () => {
   let student1Id: string;
   let student2Id: string;
   let otherStudentId: string;
-  let feeId: string;
   let c1Id: string;
   let c2Id: string;
   let c3Id: string;
@@ -180,7 +179,6 @@ describe("BulkOperationsService (Integration)", () => {
     student1Id = result.student1Id;
     student2Id = result.student2Id;
     otherStudentId = result.otherStudentId;
-    feeId = result.feeId;
     c1Id = result.c1Id;
     c2Id = result.c2Id;
     c3Id = result.c3Id;

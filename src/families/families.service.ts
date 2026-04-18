@@ -173,7 +173,7 @@ export class FamiliesService {
 
     if (input.code !== undefined) {
       const trimmed = input.code.trim();
-      data.code = trimmed ? trimmed : null;
+      data.code = trimmed || null;
     }
 
     try {
